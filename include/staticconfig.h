@@ -1,6 +1,16 @@
 //内部固件程序版本号
 const int firmwareVersion = 12;
-//省电模式
+//当前时区偏移量
+const int timezone_offset = 8;
+//检查更新地址
+const char *check_version_url = "https://iot.dotsourceit.com/IoTDevice/GetLatestVersion";
+//下载更新地址
+const char *download_latest_firmware_url = "https://iot.dotsourceit.com/IoTDevice/DownloadLatestOTAFirmwareBin";
+//节能模式HttpPing地址
+const char *http_ping_url = "https://iot.dotsourceit.com/IoTDevice/Ping";
+//获取当前网络时间戳地址
+const char *get_current_timespan_url = "https://iot.dotsourceit.com/IoTDevice/Time";
+//节能模式
 const bool PowerSaveMode = true;
 //主要服务器地址
 const char *mqtt_server = "iot.dotsourceit.com";

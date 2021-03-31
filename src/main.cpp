@@ -26,7 +26,7 @@ char *CurrentBindingID = new char[32 + 1];
 char *CurrentListenBindingIDPath = new char[10 + 8 + 1 + 1];
 char *CurrentDeviceID = new char[10 + 8 + 1];
 
-HTTPClient http;
+HTTPClient httpClient;
 AsyncWebServer httpserver(8080);
 
 int KEY_FLAG = 0;
@@ -41,15 +41,16 @@ bool smartConfigWorking = false;
 bool hasDeviceBinded = false;
 bool needReconnectMqtt = true;
 long LastReportTime = 0;
+long LastHttpPingTime = 0;
 
 String PrefSSID;
 String PrefPassword;
 String BindingID;
 
+//初始化全局参数
+void initParameters();
 //初始化GPIO
 void initGPIO();
-//OTA在线升级
-void otaUpdate();
 //刷新LED
 void refreshLED(void *Parameter);
 //监控按键
@@ -79,27 +80,11 @@ void setup()
 {
     delay(10);
     randomSeed(micros());
-    LastReportTime = -1;
-
     Serial.begin(115200);
-
     setCpuFrequencyMhz(80);
-
-    uint64_t chipid = ESP.getEfuseMac(); //The chip ID is essentially its MAC address(length: 6 bytes).
-    unsigned char value[sizeof(chipid)];
-    std::memcpy(value, &chipid, sizeof(chipid));
-    uint crcRes = CRC32(value, sizeof(chipid));
-    strcpy(CurrentDeviceID, CompanyNo);
-    strcat(CurrentDeviceID, DeviceCategory);
-    strcat(CurrentDeviceID, DeviceModelNo);
-    sprintf(CurrentDeviceID + 10, "%-4X", crcRes);
-    Serial.printf("CurrentDeviceID = %s\n", CurrentDeviceID);
-
-    strcpy(CurrentListenBindingIDPath, "/");
-    strcat(CurrentListenBindingIDPath, CurrentDeviceID);
-    Serial.printf("CurrentListenBindingIDPath = %s\n", CurrentListenBindingIDPath);
-
+    
     initGPIO();
+    initParameters();
 
     //LED刷新任务
     xTaskCreatePinnedToCore((TaskFunction_t)refreshLED, "refreshLED", 1024, (void *)NULL, (UBaseType_t)2, (TaskHandle_t *)NULL, (BaseType_t)tskNO_AFFINITY);
@@ -136,12 +121,12 @@ void setup()
         initWifi();
         if (PowerSaveMode)
         {
-
         }
         else
         {
-            initMqtt();
+            //initMqtt();
         }
+        initMqtt();
     }
 }
 
@@ -185,6 +170,25 @@ void loop()
     delay(500);
     esp_light_sleep_start();
     Serial.println("wakeup");*/
+}
+
+void initParameters()
+{
+    LastReportTime = -1;
+    LastHttpPingTime = -1;
+    uint64_t chipid = ESP.getEfuseMac(); //The chip ID is essentially its MAC address(length: 6 bytes).
+    unsigned char value[sizeof(chipid)];
+    std::memcpy(value, &chipid, sizeof(chipid));
+    uint crcRes = CRC32(value, sizeof(chipid));
+    strcpy(CurrentDeviceID, CompanyNo);
+    strcat(CurrentDeviceID, DeviceCategory);
+    strcat(CurrentDeviceID, DeviceModelNo);
+    sprintf(CurrentDeviceID + 10, "%-4X", crcRes);
+    Serial.printf("CurrentDeviceID = %s\n", CurrentDeviceID);
+
+    strcpy(CurrentListenBindingIDPath, "/");
+    strcat(CurrentListenBindingIDPath, CurrentDeviceID);
+    Serial.printf("CurrentListenBindingIDPath = %s\n", CurrentListenBindingIDPath);
 }
 
 void initGPIO()
