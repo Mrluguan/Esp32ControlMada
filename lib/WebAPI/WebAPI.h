@@ -8,7 +8,7 @@ private:
 public:
     WebAPI(WiFiClient *wifiClient);
     ~WebAPI();
-    WiFiClient* DownloadLatestFirmware(); 
+    WiFiClient* DownloadLatestFirmware(int *contentLength); 
     int GetLatestVersion();
     long Time();
 };

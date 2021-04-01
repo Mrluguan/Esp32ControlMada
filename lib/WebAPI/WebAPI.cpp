@@ -66,7 +66,7 @@ WiFiClient* WebAPI::DownloadLatestFirmware(int *contentLength)
         if (sc == 200)
         {
             String length = client.header("Content-Length");
-            contentLength
+            *contentLength = atoi(length.c_str());
             return client.getStreamPtr();
         }
         return 0;
