@@ -1,6 +1,7 @@
 #include "WebAPI.h"
-#include "staticconfig.h"
-#include <Update.h>
+
+//当前内部固件程序版本号
+#define firmwareVersion 12
 
 class OTA
 {
@@ -14,11 +15,3 @@ public:
     void execOTA();
 };
 
-OTA::OTA(WebAPI *webAPI)
-{
-    _webAPI = webAPI;
-}
-
-OTA::~OTA()
-{
-}

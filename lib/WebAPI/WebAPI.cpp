@@ -1,7 +1,6 @@
 #include "WebAPI.h"
 #include "WiFi.h"
 #include "HTTPClient.h"
-#include "staticconfig.h"
 #include "stdlib.h"
 
 WebAPI::WebAPI(WiFiClient *wifiClient)
@@ -56,7 +55,7 @@ long WebAPI::Time()
     }
 }
 
-WiFiClient* WebAPI::DownloadLatestFirmware(int *contentLength)
+WiFiClient WebAPI::DownloadLatestFirmware(int &contentLength)
 {
     try
     {
@@ -66,8 +65,10 @@ WiFiClient* WebAPI::DownloadLatestFirmware(int *contentLength)
         if (sc == 200)
         {
             String length = client.header("Content-Length");
-            *contentLength = atoi(length.c_str());
-            return client.getStreamPtr();
+            Serial.print("Content-Length");
+            Serial.println(length);
+            contentLength = atoi(length.c_str());
+            return client.getStream();
         }
         return 0;
     }

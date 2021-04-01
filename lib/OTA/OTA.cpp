@@ -1,5 +1,14 @@
 #include "OTA.h"
+#include <Update.h>
 
+OTA::OTA(WebAPI *webAPI)
+{
+    _webAPI = webAPI;
+}
+
+OTA::~OTA()
+{
+}
 
 void OTA::execOTA()
 {
@@ -19,31 +28,33 @@ void OTA::execOTA()
 
 void OTA::_startOTA()
 {
-    int *contentLength;
-    WiFiClient *stream = _webAPI->DownloadLatestFirmware(contentLength);
-    if (stream == 0)
+    int contentLength = 0;
+    WiFiClient stream = _webAPI->DownloadLatestFirmware(contentLength);
+    if (&stream == 0)
     {
         Serial.println("DownloadLatestFirmware faild");
         return;
     }
+    if (contentLength == 0)
+        contentLength = 271632;
     Serial.print("LatestFirmware Size = ");
-    Serial.println(*contentLength);
+    Serial.println(contentLength);
     // Check if there is enough to OTA Update
-    bool canBegin = Update.begin(*contentLength);
+    bool canBegin = Update.begin(contentLength);
     // If yes, begin
     if (canBegin)
     {
         Serial.println("Begin OTA. This may take 2 - 5 mins to complete. Things might be quite for a while.. Patience!");
         // No activity would appear on the Serial monitor
         // So be patient. This may take 2 - 5mins to complete
-        size_t written = Update.writeStream(*stream);
-        if (written == *contentLength)
+        size_t written = Update.writeStream(stream);
+        if (written == contentLength)
         {
             Serial.println("Written : " + String(written) + " successfully");
         }
         else
         {
-            Serial.println("Written only : " + String(written) + "/" + String(*contentLength) + ". Retry?");
+            Serial.println("Written only : " + String(written) + "/" + String(contentLength) + ". Retry?");
             // retry??
             // execOTA();
         }
@@ -71,6 +82,6 @@ void OTA::_startOTA()
         // Understand the partitions and
         // space availability
         Serial.println("Not enough space to begin OTA");
-        stream->flush();
+        stream.flush();
     }
 }

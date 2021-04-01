@@ -14,11 +14,10 @@
 #include <EPD_display.h>
 #include <DotsMqttMessage.h>
 #include <CRC.h>
-#include "esp_pm.h"
 #include "Arduino.h"
 #include <stdio.h>
 #include <esp_wifi.h>
-#include <Update.h>
+#include "OTA.h"
 
 char *CurrentPubTopic = new char[16 + 1 + 32 + 1];
 char *CurrentSubTopic = new char[16 + 1 + 32 + 1];
@@ -82,7 +81,7 @@ void setup()
     randomSeed(micros());
     Serial.begin(115200);
     setCpuFrequencyMhz(80);
-    
+
     initGPIO();
     initParameters();
 
@@ -98,6 +97,15 @@ void setup()
     PrefPassword = prefs.getString("password", "none");
     BindingID = prefs.getString("BindingID", "none");
     prefs.end();
+
+    initWifi();
+
+    WiFiClient wifi;
+    WebAPI webapi(&wifi);
+    OTA ota(&webapi);
+    ota.execOTA();
+
+    return;
 
     if (BindingID == "none")
     {
@@ -311,7 +319,6 @@ void initWifi()
     }
     Serial.print("Connected! IP address: ");
     Serial.println(WiFi.localIP());
-    esp_wifi_set_ps(WIFI_PS_MAX_MODEM);
 }
 
 void smartConfigWIFI()
