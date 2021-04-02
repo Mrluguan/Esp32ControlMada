@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <esp_wifi.h>
 #include "OTA.h"
+#include "time.h"
 
 char *CurrentPubTopic = new char[16 + 1 + 32 + 1];
 char *CurrentSubTopic = new char[16 + 1 + 32 + 1];
@@ -60,6 +61,8 @@ void keyUp();
 void resetAll();
 //初始化wifi
 void initWifi();
+//时间同步
+void sntpAysnc();
 //进入配网模式
 void smartConfigWIFI();
 //等待客户端发送bindingID
@@ -99,6 +102,8 @@ void setup()
     prefs.end();
 
     initWifi();
+
+    return;
 
     WiFiClient wifi;
     WebAPI webapi(&wifi);
@@ -146,7 +151,7 @@ void loop()
     if (!smartConfigWorking && BindingID != "none" && WiFi.status() != WL_CONNECTED)
     {
         LED_STATE = 0;
-        delay(1000);
+        delay(100);
         initWifi();
     }
     if (hasDeviceBinded)
@@ -173,11 +178,6 @@ void loop()
         }
         client.loop();
     }
-    /*esp_sleep_enable_timer_wakeup(5000000);
-    Serial.println("sleep");
-    delay(500);
-    esp_light_sleep_start();
-    Serial.println("wakeup");*/
 }
 
 void initParameters()
@@ -319,6 +319,20 @@ void initWifi()
     }
     Serial.print("Connected! IP address: ");
     Serial.println(WiFi.localIP());
+    sntpAysnc();
+}
+
+void sntpAysnc()
+{
+    configTime(TimeZone * 3600, 0, "ntp.aliyun.com");
+    Serial.print("SntpAysnc Finish.Current datetime:");
+    struct tm timeinfo;
+    if (!getLocalTime(&timeinfo))
+    {
+        Serial.println("Failed to obtain time");
+        return;
+    }
+    Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
 }
 
 void smartConfigWIFI()

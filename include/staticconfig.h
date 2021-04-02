@@ -1,6 +1,7 @@
-#ifndef _COMMON
-#define _COMMON
+#ifndef _STATIC_CONFIG
+#define _STATIC_CONFIG
 
+const int TimeZone = 8;
 //节能模式
 const bool PowerSaveMode = true;
 //主要服务器地址
