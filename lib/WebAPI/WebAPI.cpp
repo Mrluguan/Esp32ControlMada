@@ -55,7 +55,7 @@ long WebAPI::Time()
     }
 }
 
-WiFiClient WebAPI::DownloadLatestFirmware(int &contentLength)
+WiFiClient* WebAPI::DownloadLatestFirmware(int &contentLength)
 {
     try
     {
@@ -68,13 +68,13 @@ WiFiClient WebAPI::DownloadLatestFirmware(int &contentLength)
             Serial.print("Content-Length");
             Serial.println(length);
             contentLength = atoi(length.c_str());
-            return client.getStream();
+            return client.getStreamPtr();
         }
-        return 0;
+        return NULL;
     }
     catch (const std::exception &e)
     {
         Serial.println("Time Error");
-        return 0;
+        return NULL;
     }
 }

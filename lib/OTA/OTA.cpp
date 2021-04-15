@@ -29,8 +29,8 @@ void OTA::execOTA()
 void OTA::_startOTA()
 {
     int contentLength = 0;
-    WiFiClient stream = _webAPI->DownloadLatestFirmware(contentLength);
-    if (&stream == 0)
+    WiFiClient* stream = _webAPI->DownloadLatestFirmware(contentLength);
+    if (stream == NULL)
     {
         Serial.println("DownloadLatestFirmware faild");
         return;
@@ -47,7 +47,7 @@ void OTA::_startOTA()
         Serial.println("Begin OTA. This may take 2 - 5 mins to complete. Things might be quite for a while.. Patience!");
         // No activity would appear on the Serial monitor
         // So be patient. This may take 2 - 5mins to complete
-        size_t written = Update.writeStream(stream);
+        size_t written = Update.writeStream(*stream);
         if (written == contentLength)
         {
             Serial.println("Written : " + String(written) + " successfully");
@@ -82,6 +82,6 @@ void OTA::_startOTA()
         // Understand the partitions and
         // space availability
         Serial.println("Not enough space to begin OTA");
-        stream.flush();
+        stream->flush();
     }
 }

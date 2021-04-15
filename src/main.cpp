@@ -1,6 +1,5 @@
 #include <Preferences.h>
 #include <WiFi.h>
-#include <PubSubClient.h>
 #include <WiFiClient.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
@@ -8,11 +7,9 @@
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "cacert.h"
 #include "staticconfig.h"
 #include <ESPAsyncWebServer.h>
 #include <EPD_display.h>
-#include <DotsMqttMessage.h>
 #include <CRC.h>
 #include "Arduino.h"
 #include <stdio.h>
@@ -20,8 +17,6 @@
 #include "OTA.h"
 #include "time.h"
 
-char *CurrentPubTopic = new char[16 + 1 + 32 + 1];
-char *CurrentSubTopic = new char[16 + 1 + 32 + 1];
 char *CurrentBindingID = new char[32 + 1];
 char *CurrentListenBindingIDPath = new char[10 + 8 + 1 + 1];
 char *CurrentDeviceID = new char[10 + 8 + 1];
@@ -33,13 +28,9 @@ int KEY_FLAG = 0;
 int LED_STATE = 0;
 int LED_FLASH_FLAG = 0;
 
-WiFiClientSecure espClient;
-PubSubClient client(espClient);
-
 bool keyDownWorking = false;
 bool smartConfigWorking = false;
 bool hasDeviceBinded = false;
-bool needReconnectMqtt = true;
 long LastReportTime = 0;
 long LastHttpPingTime = 0;
 
@@ -67,16 +58,8 @@ void sntpAysnc();
 void smartConfigWIFI();
 //等待客户端发送bindingID
 void waitBindingID();
-//初始化MQTT
-void initMqtt();
-//MQTT重连
-void reconnectMqtt();
-//发送回复消息
-void SendRepeatMessage(unsigned char *RepeatID);
 //获取当前剩余电量
 const char *GetCurrentPowerLevel();
-//报告当前设备状态
-void ReportStatus();
 
 void setup()
 {
@@ -101,17 +84,6 @@ void setup()
     BindingID = prefs.getString("BindingID", "none");
     prefs.end();
 
-    initWifi();
-
-    return;
-
-    WiFiClient wifi;
-    WebAPI webapi(&wifi);
-    OTA ota(&webapi);
-    ota.execOTA();
-
-    return;
-
     if (BindingID == "none")
     {
         Serial.println("BindingID Not Found");
@@ -122,24 +94,7 @@ void setup()
         memcpy(CurrentBindingID, BindingID.c_str(), 33);
         Serial.printf("CurrentBindingID = %s\n", CurrentBindingID);
         hasDeviceBinded = true;
-
-        strcpy(CurrentPubTopic, mqtt_device_pub_topic_prefix);
-        strcat(CurrentPubTopic, CurrentBindingID);
-        Serial.printf("CurrentPubTopic = %s\n", CurrentPubTopic);
-
-        strcpy(CurrentSubTopic, mqtt_device_sub_topic_prefix);
-        strcat(CurrentSubTopic, CurrentBindingID);
-        Serial.printf("CurrentSubTopic = %s\n", CurrentSubTopic);
-
         initWifi();
-        if (PowerSaveMode)
-        {
-        }
-        else
-        {
-            //initMqtt();
-        }
-        initMqtt();
     }
 }
 
@@ -156,27 +111,14 @@ void loop()
     }
     if (hasDeviceBinded)
     {
-        if (!client.connected())
+        LED_STATE = 1;
+        long now = millis();
+        if (LastReportTime < 0 || (now > LastReportTime && now - LastReportTime > status_report_interval) || (now < LastReportTime && LastReportTime - now > status_report_interval))
         {
-            LED_STATE = 0;
-            if (needReconnectMqtt)
-            {
-                delay(1000);
-                reconnectMqtt();
-            }
+            Serial.println(ESP.getFreeHeap());
+            LastReportTime = now;
+            
         }
-        else
-        {
-            LED_STATE = 1;
-            long now = millis();
-            if (LastReportTime < 0 || (now > LastReportTime && now - LastReportTime > status_report_interval) || (now < LastReportTime && LastReportTime - now > status_report_interval))
-            {
-                Serial.println(ESP.getFreeHeap());
-                LastReportTime = now;
-                ReportStatus();
-            }
-        }
-        client.loop();
     }
 }
 
@@ -186,7 +128,7 @@ void initParameters()
     LastHttpPingTime = -1;
     uint64_t chipid = ESP.getEfuseMac(); //The chip ID is essentially its MAC address(length: 6 bytes).
     unsigned char value[sizeof(chipid)];
-    std::memcpy(value, &chipid, sizeof(chipid));
+    memcpy(value, &chipid, sizeof(chipid));
     uint crcRes = CRC32(value, sizeof(chipid));
     strcpy(CurrentDeviceID, CompanyNo);
     strcat(CurrentDeviceID, DeviceCategory);
@@ -404,89 +346,7 @@ void waitBindingID()
     httpserver.begin();
 }
 
-void mqtt_callback(char *topic, byte *payload, unsigned int length)
-{
-    Serial.println("Received Mqtt Message");
-    DotsMqttMessage WaitHandleCommand;
-    WaitHandleCommand.FromPayload((unsigned char *)payload);
-    Serial.println("Load Mqtt Message Success");
-    std::string type = WaitHandleCommand.GetString("type");
-    Serial.println(type.c_str());
-    if (type == "refresh")
-    {
-        Serial.println("RefreshImage");
-        Serial.println(WaitHandleCommand.GetValue("img").len);
-        digitalWrite(16, LOW);
-        EPD_init(); //EPD init
-        PIC_display1(WaitHandleCommand.GetValue("img").item);
-        EPD_refresh(); //EPD_refresh
-        EPD_sleep();   //EPD_sleep,Sleep instruction is necessary, please do not delete!!!
-        digitalWrite(16, HIGH);
-        SendRepeatMessage(WaitHandleCommand.GetValue("repeat_id").item);
-    }
-}
-
-void initMqtt()
-{
-    espClient.setCACert(mqtt_ca_cert);
-    client.setBufferSize(65535);
-    client.setServer(mqtt_server, mqtt_port);
-    client.connect(CurrentBindingID, CurrentDeviceID, "");
-    Serial.println("Mqtt Connected!");
-    client.subscribe(CurrentSubTopic);
-    client.setCallback(mqtt_callback);
-}
-
-void reconnectMqtt()
-{
-    Serial.println("reconnect MQTT...");
-    if (client.connect(CurrentBindingID, CurrentDeviceID, ""))
-    {
-        client.subscribe(CurrentSubTopic);
-        client.setCallback(mqtt_callback);
-        Serial.println("connected");
-    }
-    else
-    {
-        Serial.println("failed");
-        int state = client.state();
-        Serial.println(state);
-        if (state == 4)
-        {
-            Serial.println("Bad Mqtt Login Info.Not Reconnect");
-            needReconnectMqtt = false;
-            return;
-        }
-        Serial.println("try again in 5 sec");
-        delay(5000);
-    }
-}
-
 const char *GetCurrentPowerLevel()
 {
     return "1";
-}
-
-void ReportStatus()
-{
-    if (client.connected())
-    {
-        Serial.println("Report Status");
-        DotsMqttMessage msg;
-        msg.SetString("type", "status");
-        msg.SetString("status", "{\"power\":0}");
-        OutputPayload output = msg.ToPayload();
-        client.publish(CurrentPubTopic, output.data, output.length);
-    }
-}
-
-void SendRepeatMessage(unsigned char *RepeatID)
-{
-    Serial.println("SendRepeatMessage");
-    DotsMqttMessage msg;
-    msg.SetString("type", "command_result");
-    msg.SetByteArray("repeat_id", RepeatID, 16);
-    msg.SetString("result", "success");
-    OutputPayload output = msg.ToPayload();
-    client.publish(CurrentPubTopic, output.data, output.length);
 }
