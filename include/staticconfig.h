@@ -4,7 +4,6 @@
 const int TimeZone = 8;
 //主要服务器地址
 const char *mqtt_server = "iot.dotsourceit.com";
-
 //公司代号
 const char *CompanyNo = "DY";
 //产品类型

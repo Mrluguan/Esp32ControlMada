@@ -2,9 +2,6 @@
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <WiFiClientSecure.h>
-#include <HTTPClient.h>
-#include <stdio.h>
-#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "staticconfig.h"
@@ -12,8 +9,6 @@
 #include <EPD_display.h>
 #include <CRC.h>
 #include "Arduino.h"
-#include <stdio.h>
-#include <esp_wifi.h>
 #include "OTA.h"
 #include "time.h"
 
@@ -21,7 +16,6 @@ char *CurrentBindingID = new char[32 + 1];
 char *CurrentListenBindingIDPath = new char[10 + 8 + 1 + 1];
 char *CurrentDeviceID = new char[10 + 8 + 1];
 
-HTTPClient httpClient;
 AsyncWebServer httpserver(8080);
 
 int KEY_FLAG = 0;
@@ -31,7 +25,6 @@ int LED_FLASH_FLAG = 0;
 bool keyDownWorking = false;
 bool smartConfigWorking = false;
 bool hasDeviceBinded = false;
-long LastReportTime = 0;
 long LastHttpPingTime = 0;
 
 String PrefSSID;
@@ -58,6 +51,8 @@ void sntpAysnc();
 void smartConfigWIFI();
 //等待客户端发送bindingID
 void waitBindingID();
+//Ping
+void Ping();
 //获取当前剩余电量
 const char *GetCurrentPowerLevel();
 
@@ -67,6 +62,10 @@ void setup()
     randomSeed(micros());
     Serial.begin(115200);
     setCpuFrequencyMhz(80);
+
+    uint32_t flash_size = ESP.getFlashChipSize();
+    Serial.printf("flash size = %d\n",flash_size);
+    return;
 
     initGPIO();
     initParameters();
@@ -100,7 +99,7 @@ void setup()
 
 void loop()
 {
-    //return;
+    return;
     if (smartConfigWorking)
         LED_STATE = 2;
     if (!smartConfigWorking && BindingID != "none" && WiFi.status() != WL_CONNECTED)
@@ -113,19 +112,17 @@ void loop()
     {
         LED_STATE = 1;
         long now = millis();
-        if (LastReportTime < 0 || (now > LastReportTime && now - LastReportTime > status_report_interval) || (now < LastReportTime && LastReportTime - now > status_report_interval))
+        if (now - LastHttpPingTime > ping_req_interval_sec * 1000)
         {
-            Serial.println(ESP.getFreeHeap());
-            LastReportTime = now;
-            
+            Ping();
+            LastHttpPingTime = millis();
         }
     }
 }
 
 void initParameters()
 {
-    LastReportTime = -1;
-    LastHttpPingTime = -1;
+    LastHttpPingTime = 0;
     uint64_t chipid = ESP.getEfuseMac(); //The chip ID is essentially its MAC address(length: 6 bytes).
     unsigned char value[sizeof(chipid)];
     memcpy(value, &chipid, sizeof(chipid));
@@ -349,4 +346,9 @@ void waitBindingID()
 const char *GetCurrentPowerLevel()
 {
     return "1";
+}
+
+void Ping()
+{
+
 }

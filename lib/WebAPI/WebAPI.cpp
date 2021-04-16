@@ -12,6 +12,27 @@ WebAPI::~WebAPI()
 {
 }
 
+String WebAPI::Ping(String payload)
+{
+    try
+    {
+        HTTPClient client;
+        client.begin(*_wifiClient, http_ping_url);
+        int sc = client.POST(payload);
+        if (sc == 200)
+        {
+            return client.getString();
+        }
+        Serial.printf("HTTP Status code = %d\n",sc);
+        return "";
+    }
+    catch (const std::exception &e)
+    {
+        Serial.printf("HTTP Error");
+        return "";
+    }
+}
+
 int WebAPI::GetLatestVersion()
 {
     try
@@ -33,29 +54,7 @@ int WebAPI::GetLatestVersion()
     }
 }
 
-long WebAPI::Time()
-{
-    try
-    {
-        HTTPClient client;
-        client.begin(*_wifiClient, check_version_url);
-        int sc = client.GET();
-        if (sc == 200)
-        {
-            char *pos;
-            long version = strtol(client.getString().c_str(), &pos, 10);
-            return version;
-        }
-        return 0;
-    }
-    catch (const std::exception &e)
-    {
-        Serial.println("Time Error");
-        return 0;
-    }
-}
-
-WiFiClient* WebAPI::DownloadLatestFirmware(int &contentLength)
+WiFiClient *WebAPI::DownloadLatestFirmware(int &contentLength)
 {
     try
     {
