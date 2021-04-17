@@ -16,10 +16,10 @@ void OTA::execOTA()
     Serial.println("check version");
     int version = _webAPI->GetLatestVersion();
     Serial.print("Current version:");
-    Serial.println(firmwareVersion);
+    Serial.println(FIREWARE_VERSION);
     Serial.print("Latest version:");
     Serial.println(version);
-    if (version > 0 && version > firmwareVersion)
+    if (version > 0 && version > FIREWARE_VERSION)
     {
         Serial.println("Has update.Start OTA");
         _startOTA();

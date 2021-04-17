@@ -21,5 +21,6 @@ const char *DeviceModelNo = "MP072";
 #define LED_RED_PIN 18
 //绿色LED
 #define LED_GREEN_PIN 17
-
+//屏幕电源
+#define EPD_POWER 16
 #endif

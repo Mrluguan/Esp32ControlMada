@@ -1,7 +1,7 @@
 #include "WebAPI.h"
 
 //当前内部固件程序版本号
-#define firmwareVersion 12
+#define FIREWARE_VERSION 12
 
 class OTA
 {
