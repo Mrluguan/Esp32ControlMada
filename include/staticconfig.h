@@ -10,19 +10,16 @@ const char *CompanyNo = "DY";
 const char *DeviceCategory = "EID";
 //产品型号
 const char *DeviceModelNo = "MP072";
+
 //PING间隔秒数
-const int ping_req_interval_sec = 6;
-
-/*const int POWER_EN = 15;
-const int LED_RED_PIN = 5;
-const int LED_GREEN_PIN = 17;
-const int LED_BLUE_PIN = 16;*/
-
-const int POWER_EN = 17;
-const int LED_RED_PIN = 17;
-const int LED_GREEN_PIN = 17;
-const int LED_BLUE_PIN = 17;
-
-const int KEY = 4;
+#define PING_INTERVAL_SEC 6
+//ADC电压测量
+#define ADC_PIN 35
+//重置按钮
+#define RESETKEY_PIN 4
+//红色LED
+#define LED_RED_PIN 18
+//绿色LED
+#define LED_GREEN_PIN 17
 
 #endif

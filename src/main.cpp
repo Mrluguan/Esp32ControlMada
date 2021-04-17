@@ -11,15 +11,18 @@
 #include "Arduino.h"
 #include "OTA.h"
 #include "time.h"
+#include <ArduinoJson.h>
 
 char *CurrentBindingID = new char[32 + 1];
 char *CurrentListenBindingIDPath = new char[10 + 8 + 1 + 1];
 char *CurrentDeviceID = new char[10 + 8 + 1];
 
 AsyncWebServer httpserver(8080);
+WiFiClient wifiClient;
+WebAPI webApi(&wifiClient);
 
 int KEY_FLAG = 0;
-int LED_STATE = 0;
+int LED_STATE = 0; //0=初始状态|错误，1=正常工作，2=配网
 int LED_FLASH_FLAG = 0;
 
 bool keyDownWorking = false;
@@ -64,11 +67,13 @@ void setup()
     setCpuFrequencyMhz(80);
 
     uint32_t flash_size = ESP.getFlashChipSize();
-    Serial.printf("flash size = %d\n",flash_size);
-    return;
+    Serial.printf("flash size = %dMB\n", flash_size / 1024 / 1024);
 
     initGPIO();
     initParameters();
+
+    Ping();
+    return;
 
     //LED刷新任务
     xTaskCreatePinnedToCore((TaskFunction_t)refreshLED, "refreshLED", 1024, (void *)NULL, (UBaseType_t)2, (TaskHandle_t *)NULL, (BaseType_t)tskNO_AFFINITY);
@@ -86,6 +91,7 @@ void setup()
     if (BindingID == "none")
     {
         Serial.println("BindingID Not Found");
+        KEY_FLAG = 1;
         return;
     }
     else
@@ -99,7 +105,6 @@ void setup()
 
 void loop()
 {
-    return;
     if (smartConfigWorking)
         LED_STATE = 2;
     if (!smartConfigWorking && BindingID != "none" && WiFi.status() != WL_CONNECTED)
@@ -112,7 +117,7 @@ void loop()
     {
         LED_STATE = 1;
         long now = millis();
-        if (now - LastHttpPingTime > ping_req_interval_sec * 1000)
+        if (now - LastHttpPingTime > PING_INTERVAL_SEC * 1000)
         {
             Ping();
             LastHttpPingTime = millis();
@@ -152,44 +157,38 @@ void initGPIO()
 
     pinMode(LED_RED_PIN, OUTPUT);
     pinMode(LED_GREEN_PIN, OUTPUT);
-    pinMode(LED_BLUE_PIN, OUTPUT);
 
     digitalWrite(LED_RED_PIN, HIGH);
 
-    pinMode(KEY, INPUT | PULLUP);
-    attachInterrupt(KEY, keyUp, RISING);
+    pinMode(RESETKEY_PIN, INPUT | PULLUP);
+    attachInterrupt(RESETKEY_PIN, keyUp, RISING);
 }
 
 void refreshLED(void *Parameter)
 {
     while (1)
     {
-        //0=red,1=blue,2=red flash
         if (LED_STATE == 0)
         {
             digitalWrite(LED_RED_PIN, HIGH);
-            digitalWrite(LED_BLUE_PIN, LOW);
             digitalWrite(LED_GREEN_PIN, LOW);
         }
         else if (LED_STATE == 1)
         {
-            digitalWrite(LED_BLUE_PIN, HIGH);
             digitalWrite(LED_RED_PIN, LOW);
-            digitalWrite(LED_GREEN_PIN, LOW);
+            digitalWrite(LED_GREEN_PIN, HIGH);
         }
         else if (LED_STATE == 2)
         {
             if (LED_FLASH_FLAG == 0)
             {
                 digitalWrite(LED_RED_PIN, LOW);
-                digitalWrite(LED_BLUE_PIN, LOW);
                 digitalWrite(LED_GREEN_PIN, LOW);
                 LED_FLASH_FLAG = 1;
             }
             else if (LED_FLASH_FLAG == 1)
             {
                 digitalWrite(LED_RED_PIN, HIGH);
-                digitalWrite(LED_BLUE_PIN, LOW);
                 digitalWrite(LED_GREEN_PIN, LOW);
                 LED_FLASH_FLAG = 0;
             }
@@ -350,5 +349,34 @@ const char *GetCurrentPowerLevel()
 
 void Ping()
 {
+    while (!WiFi.isConnected())
+    {
+        WiFi.mode(WIFI_STA);
+        WiFi.begin("azkiki", "azkiki123.");
+        delay(1000);
+    }
 
+    int salt = rand();
+    DynamicJsonDocument doc(1024);
+    doc["Salt"] = salt;
+    doc["BindingID"] = "test";
+    doc["Status"] = "";
+    doc["DeviceID"] = CurrentDeviceID;
+    String request = "";
+    serializeJson(doc, request);
+    Serial.printf("Ping %s\n", request.c_str());
+    String response = webApi.Ping(request);
+    if (response != "")
+    {
+        Serial.printf("Ping Result %s\n", response.c_str());
+        deserializeJson(doc, response);
+        if (doc["Salt"] == salt)
+        {
+            Serial.printf("Code %d\n", doc["Code"]);
+        }
+    }
+    else
+    {
+        Serial.println("Ping Return Empty");
+    }
 }
