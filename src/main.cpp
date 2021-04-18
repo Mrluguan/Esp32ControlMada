@@ -10,6 +10,8 @@
 #include "OTA.h"
 #include "time.h"
 #include <ArduinoJson.h>
+#include <esp_pm.h>
+#include <driver/ledc.h>
 
 char *CurrentBindingID = new char[32 + 1];
 char *CurrentListenBindingIDPath = new char[10 + 8 + 1 + 1];
@@ -30,8 +32,10 @@ long setupStartTime = 0;
 
 int pingErrorCount = 0;
 
-long sleepTime = 5000;
+long sleepTime = 10000;
 long LastSleepTime = 0;
+
+long LastSntpSync = 0;
 
 String PrefSSID = "azkiki";
 String PrefPassword = "azkiki123.";
@@ -55,8 +59,8 @@ void connectWifi();
 void sntpAysnc();
 //ping
 void ping();
-//获取当前剩余电量
-const char *GetCurrentPowerLevel();
+//获取当前设备状态字符串
+String GetCurrentDeviceStatus();
 //设备睡眠
 void deviceSleep();
 //设置当前状态0=刚开机，1=无法连接，2=正在配网，3=正常工作，4=繁忙
@@ -70,13 +74,17 @@ void setup()
 {
     //开机
     delay(10);
+    esp_pm_config_esp32_t pmset;
+    pmset.light_sleep_enable = true;
+    esp_err_t err = esp_pm_configure(&pmset);
+    Serial.printf("esp_pm_configure failed: %s", esp_err_to_name(err));
     randomSeed(micros());
     Serial.begin(115200);
-    setCpuFrequencyMhz(80);
+    setCpuFrequencyMhz(240);
     setCurrentState(0);
 
-    /*uint32_t flash_size = ESP.getFlashChipSize();
-    Serial.printf("flash size = %dMB\n", flash_size / 1024 / 1024);*/
+    uint32_t flash_size = ESP.getFlashChipSize();
+    Serial.printf("flash size = %dMB\n", flash_size / 1024 / 1024);
     //初始化GPIO
     initGPIO();
     //初始化系统基础配置
@@ -102,6 +110,11 @@ void setup()
 
 void loop()
 {
+    if (millis() > 40ul * 24ul * 60ul * 60ul * 1000ul)
+    {
+        ESP.restart();
+        return;
+    }
     if (currentState == 2)
         return;
     if (hasDeviceBinded)
@@ -109,6 +122,11 @@ void loop()
         connectWifi();
         if (WiFi.isConnected())
         {
+            if (millis() - LastSntpSync > 6 * 60 * 60 * 1000)
+            {
+                sntpAysnc();
+                LastSntpSync = millis();
+            }
             ping();
             if (pingErrorCount >= 3)
             {
@@ -148,8 +166,58 @@ void initParameters()
     prefs.end();
 }
 
+/*#define RED_LED_OPEN ledcWrite(0, 200)
+#define RED_LED_CLOSE ledcWrite(0, 0)
+#define GREEN_LED_OPEN ledcWrite(1, 145)
+#define GREEN_LED_CLOSE ledcWrite(1, 0)*/
+#define RED_LED_OPEN digitalWrite(LED_RED_PIN, HIGH)
+#define RED_LED_CLOSE  digitalWrite(LED_RED_PIN, LOW)
+#define GREEN_LED_OPEN  digitalWrite(LED_GREEN_PIN, HIGH)
+#define GREEN_LED_CLOSE  digitalWrite(LED_GREEN_PIN, LOW)
+
 void initGPIO()
 {
+    //初始化LED灯
+    /*ledcSetup(0, 5000, 8);
+    ledcAttachPin(LED_RED_PIN, 0);
+    ledcSetup(1, 5000, 8);
+    ledcAttachPin(LED_GREEN_PIN, 1);*/
+
+    pinMode(LED_RED_PIN, OUTPUT);
+    pinMode(LED_GREEN_PIN, OUTPUT);
+
+    /*ledc_timer_config_t ledc_timer;
+    ledc_timer.duty_resolution = LEDC_TIMER_13_BIT;
+    ledc_timer.freq_hz = 5000;
+    ledc_timer.speed_mode = LEDC_LOW_SPEED_MODE;
+    ledc_timer.timer_num = LEDC_TIMER_0;
+
+    ledc_timer_config(&ledc_timer);
+
+    ledc_channel_config_t ledc_channel_red;
+    ledc_channel_red.channel = LEDC_CHANNEL_0;
+    ledc_channel_red.duty = 0;
+    ledc_channel_red.gpio_num = LED_RED_PIN;
+    ledc_channel_red.speed_mode = LEDC_LOW_SPEED_MODE;
+    ledc_channel_red.hpoint = 0;
+    ledc_channel_red.timer_sel = LEDC_TIMER_0;
+
+    ledc_channel_config_t ledc_channel_green;
+    ledc_channel_green.channel = LEDC_CHANNEL_1;
+    ledc_channel_green.duty = 0;
+    ledc_channel_green.gpio_num = LED_GREEN_PIN;
+    ledc_channel_green.speed_mode = LEDC_LOW_SPEED_MODE;
+    ledc_channel_green.hpoint = 0;
+    ledc_channel_green.timer_sel = LEDC_TIMER_0;
+
+    ledc_channel_config(&ledc_channel_red);
+    ledc_channel_config(&ledc_channel_green);
+
+    ledc_fade_func_install(0);
+
+    ledc_set_fade_with_time(ledc_channel_red.speed_mode, ledc_channel_red.channel, 2000, 3000);
+    ledc_fade_start(ledc_channel_red.speed_mode, ledc_channel_red.channel,LEDC_FADE_NO_WAIT);*/
+
     //切断墨水屏驱动供电
     pinMode(EPD_POWER, OUTPUT);
     digitalWrite(EPD_POWER, 1);
@@ -161,10 +229,6 @@ void initGPIO()
     pinMode(CS_Pin, OUTPUT);
     pinMode(SCK_Pin, OUTPUT);
     pinMode(SDI_Pin, OUTPUT);
-
-    //初始化LED灯
-    pinMode(LED_RED_PIN, OUTPUT);
-    pinMode(LED_GREEN_PIN, OUTPUT);
 
     //初始化重置按钮
     pinMode(RESETKEY_PIN, INPUT | PULLUP);
@@ -183,26 +247,26 @@ void refreshLED(void *Parameter)
     {
         if (LED_STATE == 0)
         {
-            digitalWrite(LED_RED_PIN, HIGH);
-            digitalWrite(LED_GREEN_PIN, LOW);
+            RED_LED_OPEN;
+            GREEN_LED_CLOSE;
         }
         else if (LED_STATE == 1)
         {
-            digitalWrite(LED_RED_PIN, LOW);
-            digitalWrite(LED_GREEN_PIN, HIGH);
+            RED_LED_CLOSE;
+            GREEN_LED_OPEN;
         }
         else if (LED_STATE == 2)
         {
             if (LED_FLASH_FLAG == 0)
             {
-                digitalWrite(LED_RED_PIN, LOW);
-                digitalWrite(LED_GREEN_PIN, LOW);
+                RED_LED_CLOSE;
+                GREEN_LED_CLOSE;
                 LED_FLASH_FLAG = 1;
             }
             else if (LED_FLASH_FLAG == 1)
             {
-                digitalWrite(LED_RED_PIN, HIGH);
-                digitalWrite(LED_GREEN_PIN, LOW);
+                RED_LED_OPEN;
+                GREEN_LED_CLOSE;
                 LED_FLASH_FLAG = 0;
             }
         }
@@ -210,39 +274,39 @@ void refreshLED(void *Parameter)
         {
             if (LED_FLASH_FLAG == 0)
             {
-                digitalWrite(LED_RED_PIN, LOW);
-                digitalWrite(LED_GREEN_PIN, LOW);
+                RED_LED_CLOSE;
+                GREEN_LED_CLOSE;
                 LED_FLASH_FLAG = 1;
             }
             else if (LED_FLASH_FLAG == 1)
             {
-                digitalWrite(LED_RED_PIN, LOW);
-                digitalWrite(LED_GREEN_PIN, HIGH);
+                RED_LED_CLOSE;
+                GREEN_LED_OPEN;
                 LED_FLASH_FLAG = 0;
             }
         }
         else if (LED_STATE == 4)
         {
-            digitalWrite(LED_RED_PIN, HIGH);
-            digitalWrite(LED_GREEN_PIN, HIGH);
+            RED_LED_OPEN;
+            GREEN_LED_OPEN;
         }
         else if (LED_STATE == 5)
         {
-            digitalWrite(LED_RED_PIN, LOW);
-            digitalWrite(LED_GREEN_PIN, LOW);
+            RED_LED_CLOSE;
+            GREEN_LED_CLOSE;
         }
         else if (LED_STATE == 6)
         {
             if (LED_FLASH_FLAG == 0)
             {
-                digitalWrite(LED_RED_PIN, HIGH);
-                digitalWrite(LED_GREEN_PIN, LOW);
+                RED_LED_OPEN;
+                GREEN_LED_CLOSE;
                 LED_FLASH_FLAG = 1;
             }
             else if (LED_FLASH_FLAG == 1)
             {
-                digitalWrite(LED_RED_PIN, LOW);
-                digitalWrite(LED_GREEN_PIN, HIGH);
+                RED_LED_CLOSE;
+                GREEN_LED_OPEN;
                 LED_FLASH_FLAG = 0;
             }
         }
@@ -319,11 +383,21 @@ void deviceSetup()
     {
         WiFi.disconnect();
     }
+
     Preferences prefs;
     prefs.begin("options", false);
     prefs.clear();
     prefs.end();
     hasDeviceBinded = false;
+
+    //DEBUG
+    /*prefs.begin("options", false);
+    prefs.putString("ssid", "azkiki");
+    prefs.putString("password", "azkiki123.");
+    prefs.putString("BindingID", "fec6273610644fd7bbd6662683efa2b2");
+    prefs.end();
+    hasDeviceBinded = true;
+    ESP.restart();*/
 
     WiFi.mode(WIFI_AP_STA);
     WiFi.beginSmartConfig();
@@ -411,9 +485,13 @@ void deviceSetup()
     ESP.restart();
 }
 
-const char *GetCurrentPowerLevel()
+String GetCurrentDeviceStatus()
 {
-    return "1";
+    String result;
+    DynamicJsonDocument doc(1024);
+    doc["power"] = "1";
+    serializeJson(doc, result);
+    return result;
 }
 
 void ping()
@@ -422,7 +500,7 @@ void ping()
     DynamicJsonDocument doc(1024);
     doc["Salt"] = salt;
     doc["BindingID"] = CurrentBindingID;
-    doc["Status"] = "";
+    doc["Status"] = GetCurrentDeviceStatus();
     doc["DeviceID"] = CurrentDeviceID;
     doc["FirmwareVersion"] = FIREWARE_VERSION;
     String request = "";
@@ -464,12 +542,15 @@ void deviceSleep()
     WiFi.disconnect();
     WiFi.mode(WIFI_OFF);
 
-    Serial.printf("light sleep start:%ld ms\n", sleepTime);
+    Serial.printf("light sleep start :%ld ms\n", sleepTime);
+    Serial.printf("this time wakeup length :%ld ms\n", millis() - LastSleepTime - sleepTime);
     Serial.printf("current state :%d \n", currentState);
     Serial.printf("current led state :%d \n", LED_STATE);
     Serial.printf("current free memory :%d bytes \n", ESP.getFreeHeap());
     delay(500);
+    LastSleepTime = millis();
     esp_sleep_enable_timer_wakeup(sleepTime * 1000);
+    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
     esp_light_sleep_start();
     Serial.println("light sleep stop");
 }
@@ -518,7 +599,7 @@ void handleCommand(String command)
     Serial.printf("handleCommand:%s\n", command.c_str());
     DynamicJsonDocument doc(1024);
     deserializeJson(doc, command);
-    String type = doc["type"].as<String>();
+    String type = doc["Type"].as<String>();
     if (type == "ota")
     {
         setBusy(true);
