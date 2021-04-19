@@ -7,11 +7,13 @@ int CS_Pin = A17;
 int SCK_Pin = A18;
 int SDI_Pin = A19;
 unsigned char HRES_byte1, HRES_byte2, VRES_byte1, VRES_byte2;
+
 void driver_delay_us(unsigned int xus) //1us
 {
   for (; xus > 1; xus--)
     ;
 }
+
 void driver_delay_xms(unsigned long xms) //1ms
 {
   unsigned long i = 0, j = 0;
@@ -22,6 +24,7 @@ void driver_delay_xms(unsigned long xms) //1ms
       ;
   }
 }
+
 void DELAY_S(unsigned int delaytime)
 {
   int i, j, k;
@@ -74,6 +77,7 @@ void EPD_W21_WriteCMD(unsigned char command)
   SPI_Write(command);
   EPD_W21_CS_1;
 }
+
 void EPD_W21_WriteDATA(unsigned char command)
 {
   SPI_Delay(1);
@@ -90,6 +94,7 @@ void EPD_W21_Init(void)
   EPD_W21_RST_1;
   delay(100);
 }
+
 void EPD_init(void)
 {
   unsigned char HRES_byte1 = 0x03; //800
@@ -127,12 +132,14 @@ void EPD_init(void)
   EPD_W21_WriteCMD(0X60); //TCON SETTING
   EPD_W21_WriteDATA(0x22);
 }
+
 void EPD_refresh(void)
 {
   EPD_W21_WriteCMD(0x12); //DISPLAY REFRESH
   driver_delay_xms(100);  //!!!The delay here is necessary, 200uS at least!!!
   lcd_chkstatus();
 }
+
 void EPD_sleep(void)
 {
   EPD_W21_WriteCMD(0X50); //VCOM AND DATA INTERVAL SETTING
@@ -144,41 +151,21 @@ void EPD_sleep(void)
   EPD_W21_WriteDATA(0xA5);
 }
 
-void PIC_display1(unsigned char *p)
+void PIC_display(const unsigned char *picData_BW, const unsigned char *picData_R)
 {
-  unsigned int i;
-  EPD_W21_WriteCMD(0x10); //Transfer old data
+  uint32_t i;
+  EPD_W21_WriteCMD(0x10);
   for (i = 0; i < 48000; i++)
-    EPD_W21_WriteDATA(0xff); //white
-
-  EPD_W21_WriteCMD(0x13); //Transfer new data
-  for (i = 0; i < 20000; i++)
-    EPD_W21_WriteDATA(pgm_read_byte(p[i])); //red
-  for (i = 0; i < 48000 - 20000; i++)
-    EPD_W21_WriteDATA(0x00); //white
-}
-
-void PIC_display_start()
-{
-  unsigned int i;
-  EPD_W21_WriteCMD(0x10); //Transfer old data
+  {
+    EPD_W21_WriteDATA(~(*picData_BW));
+    picData_BW++;
+  }
+  EPD_W21_WriteCMD(0x13);
   for (i = 0; i < 48000; i++)
-    EPD_W21_WriteDATA(0xff); //white
-
-  EPD_W21_WriteCMD(0x13); //Transfer new data
-}
-
-void PIC_display_part(unsigned char *p,int pos,int length)
-{
-  unsigned int i;
-  for (i = pos; i < length; i++)
-    EPD_W21_WriteDATA(pgm_read_byte(p[i])); //red
-}
-
-void PIC_display_end()
-{
-  for (unsigned int i = 0; i < 48000 - 20000; i++)
-    EPD_W21_WriteDATA(0x00); //white
+  {
+    EPD_W21_WriteDATA(*picData_R);
+    picData_R++;
+  }
 }
 
 void PIC_display_Clean(void)
@@ -196,6 +183,7 @@ void PIC_display_Clean(void)
     EPD_W21_WriteDATA(0x00);
   }
 }
+
 void lcd_chkstatus(void)
 {
   unsigned char busy;
@@ -206,4 +194,22 @@ void lcd_chkstatus(void)
     busy = !(busy & 0x01);
   } while (busy);
   driver_delay_xms(200);
+}
+
+void PIC_display_part(unsigned char *picData, int pos, int length)
+{
+  for (int i = 0; i < length; i++)
+  {
+    if (pos + i == 0)
+    {
+      EPD_W21_WriteCMD(0x10);
+      Serial.println("Change To CMD 10");
+    }
+    if (pos + i == 48000)
+    {
+      EPD_W21_WriteCMD(0x13);
+      Serial.println("Change To CMD 13");
+    }
+    EPD_W21_WriteDATA(picData[i]);
+  }
 }

@@ -29,7 +29,8 @@ void OTA::execOTA()
 void OTA::_startOTA()
 {
     int contentLength = 0;
-    WiFiClient* stream = _webAPI->DownloadLatestFirmware(contentLength);
+    HTTPClient client;
+    WiFiClient* stream = _webAPI->DownloadLatestFirmware(contentLength,client);
     if (stream == NULL)
     {
         Serial.println("DownloadLatestFirmware faild");

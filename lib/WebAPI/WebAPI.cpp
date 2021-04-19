@@ -2,19 +2,33 @@
 #include "HTTPClient.h"
 #include "stdlib.h"
 #include <WiFiClientSecure.h>
+#include <ArduinoJson.h>
+#include "OTA.h"
 
-WebAPI::WebAPI()
+WebAPI::WebAPI(String deviceID, String bindingID)
 {
+    _deviceID = deviceID;
+    _bindingID = bindingID;
 }
 
 WebAPI::~WebAPI()
 {
 }
 
-String WebAPI::Ping(String payload)
+String WebAPI::Ping(String status)
 {
     try
     {
+        int salt = rand();
+        DynamicJsonDocument doc(1024);
+        doc["Salt"] = salt;
+        doc["BindingID"] = _bindingID;
+        doc["Status"] = status;
+        doc["DeviceID"] = _deviceID;
+        doc["FirmwareVersion"] = FIREWARE_VERSION;
+        String payload;
+        serializeJson(doc,payload);
+        
         HTTPClient client;
         client.begin(http_ping_url);
         client.addHeader("Content-Type", "application/json");
@@ -58,11 +72,10 @@ int WebAPI::GetLatestVersion()
     }
 }
 
-WiFiClient *WebAPI::DownloadLatestFirmware(int &contentLength)
+WiFiClient *WebAPI::DownloadLatestFirmware(int &contentLength, HTTPClient &client)
 {
     try
     {
-        HTTPClient client;
         client.begin(download_latest_firmware_url);
         int sc = client.GET();
         if (sc == 200)
@@ -82,17 +95,14 @@ WiFiClient *WebAPI::DownloadLatestFirmware(int &contentLength)
     }
 }
 
-WiFiClient* WebAPI::DownloadDisplayData(String url)
+WiFiClient *WebAPI::DownloadDisplayData(String url, HTTPClient &client)
 {
     try
     {
-        HTTPClient client;
         client.begin(url);
         int sc = client.GET();
         if (sc == 200)
         {
-            String length = client.header("Content-Length");
-            Serial.printf("Content-Length=%s\n", length.c_str());
             return client.getStreamPtr();
         }
         return NULL;
@@ -101,5 +111,55 @@ WiFiClient* WebAPI::DownloadDisplayData(String url)
     {
         Serial.println("Time Error");
         return NULL;
+    }
+}
+
+void WebAPI::SetBusyStatus(bool busy)
+{
+    try
+    {
+        int salt = rand();
+        DynamicJsonDocument doc(1024);
+        doc["Salt"] = salt;
+        doc["BindingID"] = _bindingID;
+        doc["Busy"] = busy;
+        String payload;
+        serializeJson(doc,payload);
+        HTTPClient client;
+        client.begin(http_set_busy_url);
+        client.addHeader("Content-Type", "application/json");
+        client.addHeader("Cache-Control", "no-cache");
+        int sc = client.POST(payload);
+        Serial.printf("HTTP Status code = %d\n", sc);
+        client.end();
+    }
+    catch (const std::exception &e)
+    {
+        Serial.printf("HTTP Error");
+    }
+}
+
+void WebAPI::CommandHandleResultCallback(String result)
+{
+    try
+    {
+        int salt = rand();
+        DynamicJsonDocument doc(1024);
+        doc["Salt"] = salt;
+        doc["BindingID"] = _bindingID;
+        doc["Busy"] = busy;
+        String payload;
+        serializeJson(doc,payload);
+        HTTPClient client;
+        client.begin(http_command_callback_url);
+        client.addHeader("Content-Type", "application/json");
+        client.addHeader("Cache-Control", "no-cache");
+        int sc = client.POST(payload);
+        Serial.printf("HTTP Status code = %d\n", sc);
+        client.end();
+    }
+    catch (const std::exception &e)
+    {
+        Serial.printf("HTTP Error");
     }
 }

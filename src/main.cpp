@@ -9,16 +9,25 @@
 #include "Arduino.h"
 #include "OTA.h"
 #include "time.h"
-#include <ArduinoJson.h>
 #include <esp_pm.h>
 #include <driver/ledc.h>
+#include <ArduinoJson.h>
+
+/*#define RED_LED_OPEN ledcWrite(0, 200)
+#define RED_LED_CLOSE ledcWrite(0, 0)
+#define GREEN_LED_OPEN ledcWrite(1, 145)
+#define GREEN_LED_CLOSE ledcWrite(1, 0)*/
+#define RED_LED_OPEN digitalWrite(LED_RED_PIN, HIGH)
+#define RED_LED_CLOSE digitalWrite(LED_RED_PIN, LOW)
+#define GREEN_LED_OPEN digitalWrite(LED_GREEN_PIN, HIGH)
+#define GREEN_LED_CLOSE digitalWrite(LED_GREEN_PIN, LOW)
 
 char *CurrentBindingID = new char[32 + 1];
 char *CurrentListenBindingIDPath = new char[10 + 8 + 1 + 1];
 char *CurrentDeviceID = new char[10 + 8 + 1];
 
 AsyncWebServer httpserver(8080);
-WebAPI webApi;
+WebAPI *webApi;
 
 int KEY_FLAG = 0;
 int LED_STATE = 4; //0=红灯，1=绿灯，2=红灯闪烁，3=绿灯闪烁，4=红绿全亮，5=红绿全熄，6=红绿交替闪烁
@@ -65,6 +74,8 @@ String GetCurrentDeviceStatus();
 void deviceSleep();
 //设置当前状态0=刚开机，1=无法连接，2=正在配网，3=正常工作，4=繁忙
 void setCurrentState(int state);
+//write
+void writeStreamToDisplay(Stream &stream);
 //处理命令
 void handleCommand(String command);
 //向网关标记繁忙状态
@@ -72,6 +83,29 @@ void setBusy(bool busy);
 
 void setup()
 {
+    /*Serial.begin(115200);
+    initGPIO();
+    WiFi.mode(WIFI_STA);
+    WiFi.begin("dykj1", "18620508322");
+    while (!WiFi.isConnected())
+    {
+        delay(1000);
+        WiFi.begin("dykj1", "18620508322");
+    }*/
+    /*HTTPClient client;
+    client.begin("http://dots-cache.oss-cn-shenzhen.aliyuncs.com/1.dat");
+    int sc = client.GET();
+    if (sc == 200)
+    {
+        WiFiClient stream = client.getStream();
+        Serial.println("writeStreamToDisplay");
+        writeStreamToDisplay(stream);
+    }*/
+    /*HTTPClient client;
+    WiFiClient *ptr = webApi.DownloadDisplayData("http://dots-cache.oss-cn-shenzhen.aliyuncs.com/1.dat", client);
+    writeStreamToDisplay(*ptr);
+    client.end();
+    return;*/
     //开机
     delay(10);
     esp_pm_config_esp32_t pmset;
@@ -105,11 +139,13 @@ void setup()
         memcpy(CurrentBindingID, BindingID.c_str(), 33);
         Serial.printf("CurrentBindingID = %s\n", CurrentBindingID);
         hasDeviceBinded = true;
+        webApi = new WebAPI(CurrentDeviceID,CurrentBindingID);
     }
 }
 
 void loop()
 {
+    return;
     if (millis() > 40ul * 24ul * 60ul * 60ul * 1000ul)
     {
         ESP.restart();
@@ -166,61 +202,15 @@ void initParameters()
     prefs.end();
 }
 
-/*#define RED_LED_OPEN ledcWrite(0, 200)
-#define RED_LED_CLOSE ledcWrite(0, 0)
-#define GREEN_LED_OPEN ledcWrite(1, 145)
-#define GREEN_LED_CLOSE ledcWrite(1, 0)*/
-#define RED_LED_OPEN digitalWrite(LED_RED_PIN, HIGH)
-#define RED_LED_CLOSE  digitalWrite(LED_RED_PIN, LOW)
-#define GREEN_LED_OPEN  digitalWrite(LED_GREEN_PIN, HIGH)
-#define GREEN_LED_CLOSE  digitalWrite(LED_GREEN_PIN, LOW)
-
 void initGPIO()
 {
     //初始化LED灯
-    /*ledcSetup(0, 5000, 8);
-    ledcAttachPin(LED_RED_PIN, 0);
-    ledcSetup(1, 5000, 8);
-    ledcAttachPin(LED_GREEN_PIN, 1);*/
-
     pinMode(LED_RED_PIN, OUTPUT);
     pinMode(LED_GREEN_PIN, OUTPUT);
 
-    /*ledc_timer_config_t ledc_timer;
-    ledc_timer.duty_resolution = LEDC_TIMER_13_BIT;
-    ledc_timer.freq_hz = 5000;
-    ledc_timer.speed_mode = LEDC_LOW_SPEED_MODE;
-    ledc_timer.timer_num = LEDC_TIMER_0;
-
-    ledc_timer_config(&ledc_timer);
-
-    ledc_channel_config_t ledc_channel_red;
-    ledc_channel_red.channel = LEDC_CHANNEL_0;
-    ledc_channel_red.duty = 0;
-    ledc_channel_red.gpio_num = LED_RED_PIN;
-    ledc_channel_red.speed_mode = LEDC_LOW_SPEED_MODE;
-    ledc_channel_red.hpoint = 0;
-    ledc_channel_red.timer_sel = LEDC_TIMER_0;
-
-    ledc_channel_config_t ledc_channel_green;
-    ledc_channel_green.channel = LEDC_CHANNEL_1;
-    ledc_channel_green.duty = 0;
-    ledc_channel_green.gpio_num = LED_GREEN_PIN;
-    ledc_channel_green.speed_mode = LEDC_LOW_SPEED_MODE;
-    ledc_channel_green.hpoint = 0;
-    ledc_channel_green.timer_sel = LEDC_TIMER_0;
-
-    ledc_channel_config(&ledc_channel_red);
-    ledc_channel_config(&ledc_channel_green);
-
-    ledc_fade_func_install(0);
-
-    ledc_set_fade_with_time(ledc_channel_red.speed_mode, ledc_channel_red.channel, 2000, 3000);
-    ledc_fade_start(ledc_channel_red.speed_mode, ledc_channel_red.channel,LEDC_FADE_NO_WAIT);*/
-
     //切断墨水屏驱动供电
     pinMode(EPD_POWER, OUTPUT);
-    digitalWrite(EPD_POWER, 1);
+    digitalWrite(EPD_POWER, HIGH);
 
     //初始化墨水屏驱动SPI
     pinMode(BUSY_Pin, INPUT);
@@ -233,8 +223,6 @@ void initGPIO()
     //初始化重置按钮
     pinMode(RESETKEY_PIN, INPUT | PULLUP);
     attachInterrupt(RESETKEY_PIN, keyUp, RISING);
-
-    pinMode(RESETKEY_PIN, INPUT);
 
     //初始化ADC
     pinMode(ADC_PIN, INPUT | ANALOG);
@@ -349,7 +337,7 @@ void connectWifi()
 
     while (WiFi.status() != WL_CONNECTED)
     {
-        if (millis() - startConnectTime > 12 * 1000)
+        if (millis() - startConnectTime > 20 * 1000)
         {
             Serial.println("Connect wifi timeout");
             setCurrentState(1);
@@ -389,15 +377,6 @@ void deviceSetup()
     prefs.clear();
     prefs.end();
     hasDeviceBinded = false;
-
-    //DEBUG
-    /*prefs.begin("options", false);
-    prefs.putString("ssid", "azkiki");
-    prefs.putString("password", "azkiki123.");
-    prefs.putString("BindingID", "fec6273610644fd7bbd6662683efa2b2");
-    prefs.end();
-    hasDeviceBinded = true;
-    ESP.restart();*/
 
     WiFi.mode(WIFI_AP_STA);
     WiFi.beginSmartConfig();
@@ -452,6 +431,7 @@ void deviceSetup()
             msg = request->getParam("msg")->value();
             Serial.printf("Received BindID=%s\n", BindingID.c_str());
             request->send(200, "application/json", "{\"code\":0}");
+            delay(1000);
             BindingID = msg;
         }
         else
@@ -461,9 +441,9 @@ void deviceSetup()
         delay(10);
     });
     httpserver.begin();
-    while (BindingID != "")
+    while (BindingID == "")
     {
-        if (millis() - smartConfigStartTime > 12 * 1000)
+        if (millis() - smartConfigStartTime > 20 * 1000)
         {
             setCurrentState(1);
             Serial.println("wait bindingID timeout");
@@ -496,37 +476,25 @@ String GetCurrentDeviceStatus()
 
 void ping()
 {
-    int salt = rand();
-    DynamicJsonDocument doc(1024);
-    doc["Salt"] = salt;
-    doc["BindingID"] = CurrentBindingID;
-    doc["Status"] = GetCurrentDeviceStatus();
-    doc["DeviceID"] = CurrentDeviceID;
-    doc["FirmwareVersion"] = FIREWARE_VERSION;
-    String request = "";
-    serializeJson(doc, request);
-    Serial.printf("Ping %s\n", request.c_str());
-    String response = webApi.Ping(request);
+    String response = webApi->Ping(GetCurrentDeviceStatus());
     if (response != "")
     {
+        DynamicJsonDocument doc(1024);
         Serial.printf("Ping Result %s\n", response.c_str());
         deserializeJson(doc, response);
-        if (doc["Salt"] == salt)
+        if (doc["Code"] == 0)
         {
-            if (doc["Code"] == 0)
+            pingErrorCount = 0;
+            if (doc["Command"] != "")
             {
-                pingErrorCount = 0;
-                if (doc["Command"] != "")
-                {
-                    setCurrentState(4);
-                    handleCommand(doc["Command"].as<String>());
-                    setCurrentState(3);
-                }
+                setCurrentState(4);
+                handleCommand(doc["Command"].as<String>());
+                setCurrentState(3);
             }
-            else
-            {
-                pingErrorCount++;
-            }
+        }
+        else
+        {
+            pingErrorCount++;
         }
     }
     else
@@ -534,7 +502,6 @@ void ping()
         pingErrorCount++;
         Serial.println("Ping Return Empty");
     }
-    doc.clear();
 }
 
 void deviceSleep()
@@ -582,16 +549,34 @@ void setCurrentState(int state)
 
 void setBusy(bool busy)
 {
-    int salt = rand();
-    DynamicJsonDocument doc(1024);
-    doc["Salt"] = salt;
-    doc["BindingID"] = CurrentBindingID;
-    doc["DeviceID"] = CurrentDeviceID;
-    doc["Busy"] = busy ? "1" : "0";
-    String request = "";
-    serializeJson(doc, request);
-    Serial.printf("Ping %s\n", request.c_str());
-    webApi.Ping(request);
+    WebAPI webApi(CurrentDeviceID, CurrentBindingID);
+    webApi.SetBusyStatus(busy);
+}
+
+void writeStreamToDisplay(Stream &stream)
+{
+    if (!stream.available())
+    {
+        Serial.println("stream isn't available");
+        return;
+    }
+    EPD_init(); //EPD init
+    int pos = 0;
+    int length = 0;
+    uint8_t *buf = new uint8_t[4096];
+    while (1)
+    {
+        length = stream.readBytes(buf, 4096);
+        if (length <= 0)
+            break;
+        Serial.printf("Download pos = %d\n", pos);
+        PIC_display_part(buf, pos, length);
+        pos += length;
+    }
+    Serial.println("EPD data write finish");
+    EPD_refresh();
+    EPD_sleep();
+    Serial.println("EPD refresh finish!");
 }
 
 void handleCommand(String command)
@@ -603,44 +588,35 @@ void handleCommand(String command)
     if (type == "ota")
     {
         setBusy(true);
-        OTA ota(&webApi);
+        OTA ota(webApi);
         ota.execOTA();
+        setBusy(false);
     }
     else if (type == "setDisplay")
     {
         setBusy(true);
-        String url = doc["url"].as<String>();
-        WiFiClient *streamptr = webApi.DownloadDisplayData(url);
-
-        digitalWrite(EPD_POWER, 0); //EPD PowerUp
-        EPD_init();                 //EPD init
-        PIC_display_start();
-        int pos = 0;
-        int length = 0;
-        uint8_t buf[1024];
-        while (1)
-        {
-            length = streamptr->read(buf, 1024);
-            if (length <= 0)
-                break;
-            PIC_display_part(buf, pos, length);
-            pos += length;
-        }
-        PIC_display_end();
-        EPD_refresh();              //EPD_refresh
-        EPD_sleep();                //EPD_sleep,Sleep instruction is necessary, please do not delete!!!
-        digitalWrite(EPD_POWER, 1); //EPD PowerDown
+        String url = doc["Command"].as<String>();
+        HTTPClient http;
+        WiFiClient *streamptr = webApi->DownloadDisplayData(url, http);
+        writeStreamToDisplay(*streamptr);
+        http.end();
         setBusy(false);
     }
     else if (type == "clearDisplay")
     {
         setBusy(true);
-        digitalWrite(EPD_POWER, 0); //EPD PowerUp
-        EPD_init();                 //EPD init
+        digitalWrite(EPD_POWER, LOW); //EPD PowerUp
+        EPD_init();                   //EPD init
         PIC_display_Clean();
-        EPD_refresh();              //EPD_refresh
-        EPD_sleep();                //EPD_sleep,Sleep instruction is necessary, please do not delete!!!
-        digitalWrite(EPD_POWER, 1); //EPD PowerDown
+        EPD_refresh();                 //EPD_refresh
+        EPD_sleep();                   //EPD_sleep,Sleep instruction is necessary, please do not delete!!!
+        digitalWrite(EPD_POWER, HIGH); //EPD PowerDown
+        setBusy(false);
+    }
+    else if (type == "test")
+    {
+        setBusy(true);
+        delay(5000);
         setBusy(false);
     }
     else
