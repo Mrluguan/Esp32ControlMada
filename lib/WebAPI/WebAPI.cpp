@@ -27,8 +27,8 @@ String WebAPI::Ping(String status)
         doc["DeviceID"] = _deviceID;
         doc["FirmwareVersion"] = FIREWARE_VERSION;
         String payload;
-        serializeJson(doc,payload);
-        
+        serializeJson(doc, payload);
+
         HTTPClient client;
         client.begin(http_ping_url);
         client.addHeader("Content-Type", "application/json");
@@ -39,7 +39,7 @@ String WebAPI::Ping(String status)
         {
             result = client.getString();
         }
-        Serial.printf("HTTP Status code = %d\n", sc);
+        Serial.printf("Ping HTTP Status code = %d\n", sc);
         client.end();
         return result;
     }
@@ -123,14 +123,16 @@ void WebAPI::SetBusyStatus(bool busy)
         doc["Salt"] = salt;
         doc["BindingID"] = _bindingID;
         doc["Busy"] = busy;
+        doc["FirmwareVersion"] = FIREWARE_VERSION;
+        doc["DeviceID"] = _deviceID;
         String payload;
-        serializeJson(doc,payload);
+        serializeJson(doc, payload);
         HTTPClient client;
         client.begin(http_set_busy_url);
         client.addHeader("Content-Type", "application/json");
         client.addHeader("Cache-Control", "no-cache");
         int sc = client.POST(payload);
-        Serial.printf("HTTP Status code = %d\n", sc);
+        Serial.printf("SetBusyStatus HTTP Status code = %d\n", sc);
         client.end();
     }
     catch (const std::exception &e)
@@ -139,7 +141,7 @@ void WebAPI::SetBusyStatus(bool busy)
     }
 }
 
-void WebAPI::CommandHandleResultCallback(String result)
+void WebAPI::CommandHandleResultCallback(String commandID, String result, bool CancelBusyStatus)
 {
     try
     {
@@ -147,9 +149,13 @@ void WebAPI::CommandHandleResultCallback(String result)
         DynamicJsonDocument doc(1024);
         doc["Salt"] = salt;
         doc["BindingID"] = _bindingID;
-        doc["Busy"] = busy;
+        doc["CommandID"] = commandID;
+        doc["FirmwareVersion"] = FIREWARE_VERSION;
+        doc["DeviceID"] = _deviceID;
+        doc["Result"] = result;
+        doc["CancelBusyStatus"] = CancelBusyStatus;
         String payload;
-        serializeJson(doc,payload);
+        serializeJson(doc, payload);
         HTTPClient client;
         client.begin(http_command_callback_url);
         client.addHeader("Content-Type", "application/json");

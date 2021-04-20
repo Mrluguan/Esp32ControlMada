@@ -29,7 +29,7 @@ public:
     int GetLatestVersion();
     WiFiClient *DownloadDisplayData(String url,HTTPClient& client);
     void SetBusyStatus(bool busy);
-    void CommandHandleResultCallback(String result);
+    void CommandHandleResultCallback(String commandID, String result, bool CancelBusyStatus);
 };
 
 #endif

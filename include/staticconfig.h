@@ -15,6 +15,8 @@ const char *DeviceModelNo = "MP072";
 #define PING_INTERVAL_SEC 6
 //ADC电压测量
 #define ADC_PIN 35
+//ADC电压测量
+#define CHANGE_STATE_PIN 34
 //重置按钮
 #define RESETKEY_PIN 4
 //红色LED
