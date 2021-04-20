@@ -40,7 +40,7 @@ long setupStartTime = 0;
 
 int pingErrorCount = 0;
 
-long sleepTime = 10000;
+long sleepTimeSec = 5;
 long LastSleepTime = 0;
 
 long LastSntpSync = 0;
@@ -554,15 +554,37 @@ void deviceSleep()
 {
     if (currentState != 2)
     {
-        Serial.printf("light sleep start :%ld ms\n", sleepTime);
-        Serial.printf("this time wakeup length :%ld ms\n", millis() - LastSleepTime - sleepTime);
+        Serial.printf("this time wakeup length :%ld ms\n", millis() - LastSleepTime - sleepTimeSec * 1000);
+
+        struct tm timeinfo;
+        if (!getLocalTime(&timeinfo))
+        {
+            Serial.println("Failed to obtain time");
+            sleepTimeSec = 7;
+        }
+        else
+        {
+            if (timeinfo.tm_hour >= 23 || timeinfo.tm_hour < 7)
+            {
+                sleepTimeSec = 15;
+            }
+            else
+            {
+                sleepTimeSec = sleepTimeSec + 1;
+                if (sleepTimeSec > 10)
+                {
+                    sleepTimeSec = 5;
+                }
+            }
+        }
+
+        Serial.printf("light sleep start :%ld ms\n", sleepTimeSec * 1000);
 
         WiFi.disconnect();
         WiFi.mode(WIFI_OFF);
 
         LastSleepTime = millis();
-        esp_sleep_enable_timer_wakeup(sleepTime * 1000);
-        esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+        esp_sleep_enable_timer_wakeup(sleepTimeSec * 1000000);
         delay(100);
         esp_light_sleep_start();
         Serial.println("light sleep stop");
@@ -643,7 +665,7 @@ void handleCommand(String command)
         http.end();
         webApi->CommandHandleResultCallback(doc["CommandID"], "success", true);
     }
-    else if (type == "clearDisplay")
+    else if (type == "cleanDisplay")
     {
         webApi->SetBusyStatus(true);
         digitalWrite(EPD_POWER, LOW); //EPD PowerUp
