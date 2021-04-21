@@ -141,7 +141,9 @@ void loop()
                 sntpAysnc();
                 LastSntpSync = millis();
             }
+            long startPingTime = millis();
             ping();
+            Serial.printf("ping use %d ms.\n", millis() - startPingTime);
             if (pingErrorCount >= 3)
             {
                 setCurrentState(1);
@@ -323,6 +325,7 @@ void connectWifi()
     }
     Serial.print("Connected! IP address: ");
     Serial.println(WiFi.localIP());
+    Serial.printf("Connect wifi use %d ms.\n", millis() - startConnectTime);
     sntpAysnc();
 }
 
