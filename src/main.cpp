@@ -13,6 +13,8 @@
 #include <driver/ledc.h>
 #include <ArduinoJson.h>
 
+#include "mbedtls/aes.h"
+
 /*#define RED_LED_OPEN ledcWrite(0, 200)
 #define RED_LED_CLOSE ledcWrite(0, 0)
 #define GREEN_LED_OPEN ledcWrite(1, 145)
@@ -124,6 +126,7 @@ void setup()
 
 void loop()
 {
+    //return;
     if (millis() > 40ul * 24ul * 60ul * 60ul * 1000ul)
     {
         ESP.restart();
@@ -143,7 +146,7 @@ void loop()
             }
             long startPingTime = millis();
             ping();
-            Serial.printf("ping use %d ms.\n", millis() - startPingTime);
+            Serial.printf("ping use %ld ms.\n", millis() - startPingTime);
             if (pingErrorCount >= 3)
             {
                 setCurrentState(1);
@@ -325,7 +328,7 @@ void connectWifi()
     }
     Serial.print("Connected! IP address: ");
     Serial.println(WiFi.localIP());
-    Serial.printf("Connect wifi use %d ms.\n", millis() - startConnectTime);
+    Serial.printf("Connect wifi use %ld ms.\n", millis() - startConnectTime);
     sntpAysnc();
 }
 
@@ -525,7 +528,7 @@ String GetCurrentDeviceStatus()
 
 void ping()
 {
-    String response = webApi->Ping(GetCurrentDeviceStatus());
+    String response = webApi->UdpPing(GetCurrentDeviceStatus());
     if (response != "")
     {
         DynamicJsonDocument doc(1024);

@@ -15,7 +15,7 @@
 //CommandCallback地址
 #define http_command_callback_url "https://iot.dotsourceit.com/HTTPGateway/CommandCallback"
 
-#define udp_remote_address "192.168.31.67"
+#define udp_remote_address "iot.dotsourceit.com"
 #define udp_remote_port 24516
 #define udp_ping_action "Ping"
 #define udp_set_busy_action "SetBusyStatus"
@@ -27,6 +27,7 @@ private:
     String _deviceID;
     String _bindingID;
     void AESEncryption(unsigned char *source, int length, unsigned char *output);
+    void AESDencryption(unsigned char *source, int length, unsigned char *output);
 
 public:
     WebAPI(String deviceID, String bindingID);

@@ -54,40 +54,46 @@ String WebAPI::Ping(String status)
 
 void WebAPI::AESEncryption(unsigned char *source, int length, unsigned char *output)
 {
-    if (length % 16 != 0)
+    if (length < 16 || length % 16 != 0)
     {
         throw "length not right";
     }
-    Serial.printf("Aes length = %d\n",length);
     long startAesTime = millis();
     unsigned char key[16] = {202, 43, 108, 55, 135, 138, 172, 74, 128, 210, 90, 233, 120, 162, 121, 129};
+    unsigned char iv[16] = {128, 210, 90, 121, 129, 202, 43, 108, 55, 135, 233, 120, 162, 138, 172, 74};
     mbedtls_aes_context ctx;
     mbedtls_aes_init(&ctx);
-    int keybits = 256;
+    int keybits = 128;
     int ret = 0;
     ret = mbedtls_aes_setkey_enc(&ctx, key, keybits);
+    if (ret != 0)
+        Serial.printf("mbedtls_aes_setkey_enc = %d\n", ret);
+    ret = mbedtls_aes_crypt_cbc(&ctx, MBEDTLS_AES_ENCRYPT, length, iv, source, output);
+    if (ret != 0)
+        Serial.printf("mbedtls_aes_crypt_cbc = %d\n", ret);
+    Serial.printf("aes use %ld ms.\n", millis() - startAesTime);
+}
 
-    int pos = 0;
-    while (pos < length)
+void WebAPI::AESDencryption(unsigned char *source, int length, unsigned char *output)
+{
+    if (length < 16 || length % 16 != 0)
     {
-        unsigned char inbuf[16];
-        unsigned char outbuf[16];
-        for (int i = 0; i < 16; i++)
-        {
-            inbuf[i] = source[pos + i];
-        }
-        ret = mbedtls_aes_crypt_ecb(&ctx, MBEDTLS_AES_ENCRYPT, inbuf, outbuf);
-        if (ret != 0)
-        {
-            throw "aes block error";
-        }
-        for (int i = 0; i < 16; i++)
-        {
-            output[pos + i] = outbuf[i];
-        }
-        pos += 16;
+        throw "length not right";
     }
-    Serial.printf("aes use %d ms.\n", millis() - startAesTime);
+    long startAesTime = millis();
+    unsigned char key[16] = {202, 43, 108, 55, 135, 138, 172, 74, 128, 210, 90, 233, 120, 162, 121, 129};
+    unsigned char iv[16] = {128, 210, 90, 121, 129, 202, 43, 108, 55, 135, 233, 120, 162, 138, 172, 74};
+    mbedtls_aes_context ctx;
+    mbedtls_aes_init(&ctx);
+    int keybits = 128;
+    int ret = 0;
+    ret = mbedtls_aes_setkey_enc(&ctx, key, keybits);
+    if (ret != 0)
+        Serial.printf("mbedtls_aes_setkey_enc = %d\n", ret);
+    ret = mbedtls_aes_crypt_cbc(&ctx, MBEDTLS_AES_DECRYPT, length, iv, source, output);
+    if (ret != 0)
+        Serial.printf("mbedtls_aes_crypt_cbc = %d\n", ret);
+    Serial.printf("aes use %ld ms.\n", millis() - startAesTime);
 }
 
 String WebAPI::UdpPing(String status)
@@ -97,6 +103,7 @@ String WebAPI::UdpPing(String status)
         int salt = rand();
         DynamicJsonDocument doc(1024);
         doc["Salt"] = salt;
+        doc["Action"] = "Ping";
         doc["BindingID"] = _bindingID;
         doc["Status"] = status;
         doc["DeviceID"] = _deviceID;
@@ -105,14 +112,21 @@ String WebAPI::UdpPing(String status)
         serializeJson(doc, payload);
 
         int length = payload.length();
-        if(length%16!=0)
+        if (length < 16)
         {
-            for(int i=0;i<(16 - (length % 16));i++)
+            for (int i = 0; i < 16 - length; i++)
             {
-                payload+=" ";
+                payload += '\n';
             }
-            length = payload.length();
         }
+        else if (length > 16 && length % 16 != 0)
+        {
+            for (int i = 0; i < (16 - (length % 16)); i++)
+            {
+                payload += '\n';
+            }
+        }
+        length = payload.length();
         unsigned char buf[length];
         payload.getBytes(buf, length);
 
@@ -122,27 +136,27 @@ String WebAPI::UdpPing(String status)
         WiFiUDP udp;
         udp.begin(12004);
         udp.beginPacket(udp_remote_address, udp_remote_port);
-        udp.write(0);
-        udp.write(1);
-        udp.write(2);
-        udp.write(3);
-        udp.write(encryptBuf, length + 4);
+        udp.write(encryptBuf, length);
         udp.endPacket();
 
-        int timeout = 3000;
-        int waitTime = 0;
+        long timeout = millis() + 3000;
         while (!udp.parsePacket())
         {
-            delay(100);
-            waitTime += 100;
-            if (waitTime >= timeout)
+            delay(30);
+            if (millis() >= timeout)
                 return "";
         }
+
         unsigned char receiveBuf[1400];
         int len = udp.read(receiveBuf, 1400);
+        if (len < 16 || len % 16 != 0)
+            return "";
+
+        unsigned char dencrypt[len];
+        AESDencryption(receiveBuf, len, dencrypt);
         String result;
         for (int i = 0; i < len; i++)
-            result += receiveBuf[i];
+            result += (char)dencrypt[i];
         return result;
     }
     catch (const std::exception &e)
