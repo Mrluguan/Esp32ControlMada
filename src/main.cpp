@@ -542,6 +542,7 @@ void ping()
                 setCurrentState(4);
                 handleCommand(doc["Command"].as<String>());
                 setCurrentState(3);
+                delay(500);
             }
         }
         else
