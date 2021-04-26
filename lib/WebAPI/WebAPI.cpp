@@ -1,9 +1,7 @@
 #include "WebAPI.h"
-#include "HTTPClient.h"
 #include "stdlib.h"
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
-#include "OTA.h"
 #include <WiFiUdp.h>
 #include "mbedtls/aes.h"
 
@@ -166,40 +164,14 @@ String WebAPI::UdpPing(String status)
     }
 }
 
-int WebAPI::GetLatestVersion()
+WiFiClient *WebAPI::DownloadDisplayData(String url, HTTPClient &client)
 {
     try
     {
-        HTTPClient client;
-        client.begin(check_version_url);
-        int sc = client.GET();
-        client.end();
-        if (sc == 200)
-        {
-            int version = atoi(client.getString().c_str());
-            return version;
-        }
-        return 0;
-    }
-    catch (const std::exception &e)
-    {
-        Serial.println("GetLatestVersion Error");
-        return 0;
-    }
-}
-
-WiFiClient *WebAPI::DownloadLatestFirmware(int &contentLength, HTTPClient &client)
-{
-    try
-    {
-        client.begin(download_latest_firmware_url);
+        client.begin(url);
         int sc = client.GET();
         if (sc == 200)
         {
-            String length = client.header("Content-Length");
-            Serial.print("Content-Length");
-            Serial.println(length);
-            contentLength = atoi(length.c_str());
             return client.getStreamPtr();
         }
         return NULL;
@@ -211,14 +183,22 @@ WiFiClient *WebAPI::DownloadLatestFirmware(int &contentLength, HTTPClient &clien
     }
 }
 
-WiFiClient *WebAPI::DownloadDisplayData(String url, HTTPClient &client)
+WiFiClient *WebAPI::DownloadFirmware(String url, int &contentLength, HTTPClient &client)
 {
     try
     {
+        const char *headerNames[] = {"Content-Length"};
         client.begin(url);
+        client.collectHeaders(headerNames, sizeof(headerNames) / sizeof(headerNames[0]));
         int sc = client.GET();
         if (sc == 200)
         {
+            if (client.hasHeader("Content-Length"))
+            {
+                String cl = client.header("Content-Length");
+                contentLength = atoi(cl.c_str());
+                Serial.println(cl.c_str());
+            }
             return client.getStreamPtr();
         }
         return NULL;

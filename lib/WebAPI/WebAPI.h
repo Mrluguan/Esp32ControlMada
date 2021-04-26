@@ -4,10 +4,8 @@
 #ifndef _WEBAPI_H_
 #define _WEBAPI_H_
 
-//检查更新地址
-#define check_version_url "https://iot.dotsourceit.com/IoTDevice/GetLatestVersion"
-//下载更新地址
-#define download_latest_firmware_url "https://iot.dotsourceit.com/IoTDevice/DownloadLatestOTAFirmwareBin"
+//当前内部固件程序版本号
+#define FIREWARE_VERSION 202104255
 //HttpPing地址
 #define http_ping_url "https://iot.dotsourceit.com/HTTPGateway/Ping"
 //SetBusyStatus地址
@@ -34,8 +32,7 @@ public:
     ~WebAPI();
     String Ping(String status);
     String UdpPing(String status);
-    WiFiClient *DownloadLatestFirmware(int &contentLength, HTTPClient &client);
-    int GetLatestVersion();
+    WiFiClient *DownloadFirmware(String url,int &contentLength, HTTPClient &client);
     WiFiClient *DownloadDisplayData(String url, HTTPClient &client);
     void SetBusyStatus(bool busy);
     void CommandHandleResultCallback(String commandID, String result, bool CancelBusyStatus);
