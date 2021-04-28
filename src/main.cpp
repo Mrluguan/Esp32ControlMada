@@ -14,6 +14,8 @@
 #include "WebAPI.h"
 #include "mbedtls/aes.h"
 #include "Update.h"
+#include "esp32/ulp.h"
+#include "driver/rtc_io.h"
 
 /*#define RED_LED_OPEN ledcWrite(0, 200)
 #define RED_LED_CLOSE ledcWrite(0, 0)
@@ -106,6 +108,7 @@ void setup()
     initGPIO();
     //初始化系统基础配置
     initParameters();
+
     //LED刷新任务
     xTaskCreatePinnedToCore((TaskFunction_t)refreshLED, "refreshLED", 1024, (void *)NULL, (UBaseType_t)2, (TaskHandle_t *)NULL, (BaseType_t)tskNO_AFFINITY);
 
@@ -121,9 +124,6 @@ void setup()
         Serial.printf("CurrentBindingID = %s\n", CurrentBindingID);
         hasDeviceBinded = true;
         webApi = new WebAPI(CurrentDeviceID, CurrentBindingID);
-        /*connectWifi();
-        LED_STATE=5;
-        return;*/
     }
 
     //按钮监控任务
@@ -132,7 +132,6 @@ void setup()
 
 void loop()
 {
-    //return;
     if (millis() > 40ul * 24ul * 60ul * 60ul * 1000ul)
     {
         ESP.restart();
@@ -319,23 +318,22 @@ void connectWifi()
 
     long startConnectTime = millis();
 
-    WiFi.mode(WIFI_STA);
     //WiFi.setSleep(WIFI_PS_MAX_MODEM);
     //WiFi.setTxPower(WIFI_POWER_2dBm);
     //WiFi.setSleep(WIFI_PS_MAX_MODEM);
     //WiFi.setTxPower(WIFI_POWER_19_5dBm);
 
+    WiFi.mode(WIFI_STA);
     WiFi.begin(PrefSSID.c_str(), PrefPassword.c_str());
     while (WiFi.status() != WL_CONNECTED)
     {
-        if (millis() - startConnectTime > 2 * 1000)
+        if (millis() - startConnectTime > 4 * 1000)
         {
-            Serial.println("Connect wifi timeout");
-            WiFi.disconnect(true, true);
+            Serial.printf("Connect wifi timeout\n");
+            WiFi.disconnect(true);
             setCurrentState(1);
             return;
         }
-        Serial.println("111");
         delay(500);
     }
     Serial.print("Connected! IP address: ");
@@ -480,15 +478,16 @@ String GetCurrentDeviceStatus()
 
     long total = 0;
     Serial.println("Start collect adc");
-    for (int i = 0; i < 50; i++)
+    for (int i = 0; i < 10; i++)
     {
         total += analogRead(ADC_PIN);
         delay(10);
     }
-    float adcAvg = total / 50.000;
+    float readingADC = total / 10.000;
     Serial.println("Stop collect adc");
-    Serial.printf("Current battery adc : %f\n", adcAvg);
-    LatestVoltage = (((adcAvg * 3.3) / (4095)) * 2) + 0.1;
+    Serial.printf("Current battery adc : %f\n", readingADC);
+    float readingVoltage = -0.000000000000016 * pow(readingADC, 4) + 0.000000000118171 * pow(readingADC, 3) - 0.000000301211691 * pow(readingADC, 2) + 0.001109019271794 * readingADC + 0.034143524634089;
+    LatestVoltage = readingVoltage * 2;
     Serial.printf("Current battery voltage : %f v\n", LatestVoltage);
 
     int rssiLevel = 0;
@@ -511,15 +510,15 @@ String GetCurrentDeviceStatus()
 
     int powerLevel = 0;
 
-    if (LatestVoltage >= 3.8)
+    if (LatestVoltage >= 3.7)
     {
         powerLevel = 3;
     }
-    else if (LatestVoltage >= 3.7)
+    else if (LatestVoltage >= 3.55)
     {
         powerLevel = 2;
     }
-    else if (LatestVoltage >= 3.6)
+    else if (LatestVoltage >= 3.40)
     {
         powerLevel = 1;
     }
