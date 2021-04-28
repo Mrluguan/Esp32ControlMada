@@ -688,12 +688,10 @@ void handleCommand(String command)
     else if (type == "cleanDisplay")
     {
         webApi->SetBusyStatus(true);
-        digitalWrite(EPD_POWER, LOW); //EPD PowerUp
         EPD_init();                   //EPD init
         PIC_display_Clean();
         EPD_refresh();                 //EPD_refresh
         EPD_sleep();                   //EPD_sleep,Sleep instruction is necessary, please do not delete!!!
-        digitalWrite(EPD_POWER, HIGH); //EPD PowerDown
         webApi->CommandHandleResultCallback(doc["CommandID"], "success", true);
     }
     else
