@@ -38,6 +38,9 @@ int LED_FLASH_FLAG = 0;
 
 int currentState = 0; //0=刚开机，1=无法连接，2=正在配网，3=正常工作，4=繁忙
 
+bool wifiConnecting = false;
+wifi_err_reason_t wifiErrReason = WIFI_REASON_UNSPECIFIED;
+
 bool hasDeviceBinded = false;
 long LastHttpPingTime = 0;
 long setupStartTime = 0;
@@ -49,9 +52,9 @@ long LastSleepTime = 0;
 
 long LastSntpSync = 0;
 
-String PrefSSID = "azkiki";
-String PrefPassword = "azkiki123.";
-String BindingID = "test";
+String PrefSSID = "";
+String PrefPassword = "";
+String BindingID = "";
 
 float LatestVoltage = 3;
 int LatestWifiRSSI = 3;
@@ -88,6 +91,24 @@ void handleCommand(String command);
 //OTA
 void httpOTA(Stream &stream, int contentLength);
 
+void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info)
+{
+    switch (event)
+    {
+    case SYSTEM_EVENT_STA_DISCONNECTED:
+        wifiErrReason = (wifi_err_reason_t)info.disconnected.reason;
+        WiFi.disconnect();
+        wifiConnecting = false;
+        break;
+    case SYSTEM_EVENT_STA_GOT_IP:
+        wifiErrReason = WIFI_REASON_UNSPECIFIED;
+        wifiConnecting = false;
+        break;
+    default:
+        break;
+    }
+}
+
 void setup()
 {
     //开机
@@ -98,8 +119,39 @@ void setup()
     Serial.printf("esp_pm_configure failed: %s", esp_err_to_name(err));
     randomSeed(micros());
     Serial.begin(115200);
-    setCpuFrequencyMhz(80);
+    setCpuFrequencyMhz(240);
     setCurrentState(0);
+
+    /*WiFi.mode(WIFI_STA);
+    WiFi.onEvent(onWiFiEvent);
+    long beginWifiTime = millis();
+    wifiConnecting = true;
+    uint8_t bssid[6] = {122, 55, 02, 10, 20, 30};*/
+    //WiFi.begin("azkiki", "azkiki123.", 1, bssid, true);
+    //while (wifiConnecting)
+    //{
+    //   delay(100);
+    //}
+    //Serial.printf("Use %ld ms.\n", millis() - beginWifiTime);
+    //return;
+    /*long startTime = millis();
+    for (uint32_t i = 1; i < 14; i++)
+    {
+        int16_t count = WiFi.scanNetworks(false, false, false, 100U, i);
+        for (int16_t c = 0; c < count; c++)
+        {
+            wifi_ap_record_t *info = (wifi_ap_record_t *)WiFi.getScanInfoByIndex(c);
+            char ssid[32];
+            sprintf(ssid,"%s",info->ssid);
+            if(ssid == "azkiki")
+            {
+
+            }
+        }
+        Serial.println();
+    }
+    Serial.printf("Use %ld ms.\n", millis() - startTime);
+    return;*/
 
     Serial.printf("current firmware version : %d\n", FIREWARE_VERSION);
     uint32_t flash_size = ESP.getFlashChipSize();
@@ -125,19 +177,19 @@ void setup()
         hasDeviceBinded = true;
         webApi = new WebAPI(CurrentDeviceID, CurrentBindingID);
     }
-
     //按钮监控任务
     xTaskCreatePinnedToCore((TaskFunction_t)keyMonitor, "keyMonitor", 4096, (void *)NULL, (UBaseType_t)2, (TaskHandle_t *)NULL, (BaseType_t)tskNO_AFFINITY);
 }
 
 void loop()
 {
+    //return;
     if (millis() > 40ul * 24ul * 60ul * 60ul * 1000ul)
     {
         ESP.restart();
         return;
     }
-    if (currentState == 2)
+    if (currentState == 2 || digitalRead(RESETKEY_PIN) == 0)
         return;
     if (hasDeviceBinded)
     {
@@ -164,6 +216,7 @@ void loop()
     }
     if (currentState != 2)
         deviceSleep();
+    delay(100);
 }
 
 void initParameters()
@@ -198,8 +251,8 @@ void initGPIO()
     pinMode(LED_GREEN_PIN, OUTPUT);
 
     //切断墨水屏驱动供电
-    pinMode(EPD_POWER, OUTPUT);
-    digitalWrite(EPD_POWER, HIGH);
+    //pinMode(EPD_POWER, OUTPUT);
+    //digitalWrite(EPD_POWER, HIGH);
 
     //初始化墨水屏驱动SPI
     pinMode(BUSY_Pin, INPUT);
@@ -290,6 +343,11 @@ void refreshLED(void *Parameter)
                 LED_FLASH_FLAG = 0;
             }
         }
+        //if reset keydown, green led open
+        if (digitalRead(RESETKEY_PIN) == 0 && currentState != 2)
+        {
+            GREEN_LED_OPEN;
+        }
         vTaskDelay(500);
     }
 }
@@ -298,14 +356,19 @@ void keyMonitor(void *Parameter)
 {
     while (1)
     {
-        int state = digitalRead(RESETKEY_PIN);
-        if (currentState != 2 && state == 0)
+        int key_down_c = 0;
+        while (digitalRead(RESETKEY_PIN) == 0)
         {
-            setCurrentState(2);
-            Serial.println("reset");
-            resetDevice();
+            delay(200);
+            key_down_c += 200;
+            if (currentState != 2 && key_down_c >= 5000)
+            {
+                setCurrentState(2);
+                Serial.println("reset");
+                resetDevice();
+            }
         }
-        delay(200);
+        delay(100);
     }
 }
 
@@ -318,27 +381,26 @@ void connectWifi()
 
     long startConnectTime = millis();
 
-    //WiFi.setSleep(WIFI_PS_MAX_MODEM);
-    //WiFi.setTxPower(WIFI_POWER_2dBm);
-    //WiFi.setSleep(WIFI_PS_MAX_MODEM);
-    //WiFi.setTxPower(WIFI_POWER_19_5dBm);
-
     WiFi.mode(WIFI_STA);
+    WiFi.onEvent(onWiFiEvent);
+    wifiConnecting = true;
     WiFi.begin(PrefSSID.c_str(), PrefPassword.c_str());
-    while (WiFi.status() != WL_CONNECTED)
+    while (wifiConnecting)
     {
-        if (millis() - startConnectTime > 4 * 1000)
+        if (millis() - startConnectTime > 8 * 1000)
         {
             Serial.printf("Connect wifi timeout\n");
             WiFi.disconnect(true);
             setCurrentState(1);
             return;
         }
-        delay(500);
+        delay(100);
     }
-    Serial.print("Connected! IP address: ");
-    Serial.println(WiFi.localIP());
     Serial.printf("Connect wifi use %ld ms.\n", millis() - startConnectTime);
+    if (WiFi.status() != WL_CONNECTED)
+    {
+        setCurrentState(1);
+    }
 }
 
 void sntpAysnc()
@@ -597,13 +659,29 @@ void deviceSleep()
 
         Serial.printf("light sleep start :%ld ms\n", sleepTimeSec * 1000);
 
-        WiFi.disconnect();
+        if (WiFi.status() == WL_CONNECTED)
+        {
+            WiFi.disconnect();
+        }
         WiFi.mode(WIFI_OFF);
+
+        if (wifiErrReason == WIFI_REASON_NO_AP_FOUND)
+        {
+            sleepTimeSec = 30;
+        }
 
         LastSleepTime = millis();
         esp_sleep_enable_timer_wakeup(sleepTimeSec * 1000000);
+        gpio_wakeup_enable((gpio_num_t)RESETKEY_PIN, GPIO_INTR_LOW_LEVEL);
+        esp_sleep_enable_gpio_wakeup();
         delay(100);
         esp_light_sleep_start();
+        esp_sleep_wakeup_cause_t wakeup_cause = esp_sleep_get_wakeup_cause();
+        if (wakeup_cause == ESP_SLEEP_WAKEUP_GPIO)
+        {
+            GREEN_LED_OPEN;
+        }
+        pinMode(RESETKEY_PIN, INPUT | PULLUP);
         Serial.println("light sleep stop");
     }
 }
@@ -625,7 +703,7 @@ void setCurrentState(int state)
     }
     else if (currentState == 3)
     {
-        LED_STATE = 1;
+        LED_STATE = 5;
     }
     else if (currentState == 4)
     {
@@ -688,10 +766,10 @@ void handleCommand(String command)
     else if (type == "cleanDisplay")
     {
         webApi->SetBusyStatus(true);
-        EPD_init();                   //EPD init
+        EPD_init(); //EPD init
         PIC_display_Clean();
-        EPD_refresh();                 //EPD_refresh
-        EPD_sleep();                   //EPD_sleep,Sleep instruction is necessary, please do not delete!!!
+        EPD_refresh(); //EPD_refresh
+        EPD_sleep();   //EPD_sleep,Sleep instruction is necessary, please do not delete!!!
         webApi->CommandHandleResultCallback(doc["CommandID"], "success", true);
     }
     else
