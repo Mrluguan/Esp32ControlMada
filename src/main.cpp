@@ -16,6 +16,7 @@
 #include "Update.h"
 #include "esp32/ulp.h"
 #include "driver/rtc_io.h"
+#include "iBeacon.h"
 
 /*#define RED_LED_OPEN ledcWrite(0, 200)
 #define RED_LED_CLOSE ledcWrite(0, 0)
@@ -121,37 +122,6 @@ void setup()
     Serial.begin(115200);
     setCpuFrequencyMhz(240);
     setCurrentState(0);
-
-    /*WiFi.mode(WIFI_STA);
-    WiFi.onEvent(onWiFiEvent);
-    long beginWifiTime = millis();
-    wifiConnecting = true;
-    uint8_t bssid[6] = {122, 55, 02, 10, 20, 30};*/
-    //WiFi.begin("azkiki", "azkiki123.", 1, bssid, true);
-    //while (wifiConnecting)
-    //{
-    //   delay(100);
-    //}
-    //Serial.printf("Use %ld ms.\n", millis() - beginWifiTime);
-    //return;
-    /*long startTime = millis();
-    for (uint32_t i = 1; i < 14; i++)
-    {
-        int16_t count = WiFi.scanNetworks(false, false, false, 100U, i);
-        for (int16_t c = 0; c < count; c++)
-        {
-            wifi_ap_record_t *info = (wifi_ap_record_t *)WiFi.getScanInfoByIndex(c);
-            char ssid[32];
-            sprintf(ssid,"%s",info->ssid);
-            if(ssid == "azkiki")
-            {
-
-            }
-        }
-        Serial.println();
-    }
-    Serial.printf("Use %ld ms.\n", millis() - startTime);
-    return;*/
 
     Serial.printf("current firmware version : %d\n", FIREWARE_VERSION);
     uint32_t flash_size = ESP.getFlashChipSize();
@@ -441,6 +411,9 @@ void deviceSetup()
     prefs.end();
     hasDeviceBinded = false;
 
+    //Start Beacon
+    StartDeviceIDBeacon(CurrentDeviceID);
+
     WiFi.mode(WIFI_AP_STA);
     WiFi.beginSmartConfig();
     //Wait for SmartConfig packet from mobile
@@ -450,6 +423,7 @@ void deviceSetup()
     {
         if (millis() - smartConfigStartTime > 2 * 60 * 1000)
         {
+            StopBeacon();
             WiFi.stopSmartConfig();
             setCurrentState(1);
             Serial.println("SmartConfig timeout");
@@ -457,6 +431,7 @@ void deviceSetup()
         }
         delay(500);
     }
+    StopBeacon();
     smartConfigStartTime = millis();
     while (WiFi.status() != WL_CONNECTED)
     {
