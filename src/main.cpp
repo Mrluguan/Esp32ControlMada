@@ -421,7 +421,7 @@ void deviceSetup()
     unsigned long smartConfigStartTime = millis();
     while (!WiFi.smartConfigDone())
     {
-        if (millis() - smartConfigStartTime > 2 * 60 * 1000)
+        if (millis() - smartConfigStartTime > 3 * 60 * 1000)
         {
             StopBeacon();
             WiFi.stopSmartConfig();
@@ -435,7 +435,7 @@ void deviceSetup()
     smartConfigStartTime = millis();
     while (WiFi.status() != WL_CONNECTED)
     {
-        if (millis() - smartConfigStartTime > 30 * 1000)
+        if (millis() - smartConfigStartTime > 2 * 60 * 1000)
         {
             setCurrentState(1);
             Serial.println("SmartConfig connect wifi timeout");
