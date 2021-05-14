@@ -91,6 +91,8 @@ void writeStreamToDisplay(Stream &stream);
 void handleCommand(String command);
 //OTA
 void httpOTA(Stream &stream, int contentLength);
+//命令处理超时看门狗
+void handleCommandWatchDog();
 
 void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info)
 {
@@ -120,7 +122,7 @@ void setup()
     Serial.printf("esp_pm_configure failed: %s", esp_err_to_name(err));
     randomSeed(micros());
     Serial.begin(115200);
-    setCpuFrequencyMhz(240);
+    setCpuFrequencyMhz(80);
     setCurrentState(0);
 
     Serial.printf("current firmware version : %d\n", FIREWARE_VERSION);
@@ -513,14 +515,15 @@ String GetCurrentDeviceStatus()
 
     Serial.printf("current change state :%d\n", digitalRead(CHANGE_STATE_PIN));
 
-    long total = 0;
+    /*long total = 0;
     Serial.println("Start collect adc");
     for (int i = 0; i < 10; i++)
     {
         total += analogRead(ADC_PIN);
         delay(10);
-    }
-    float readingADC = total / 10.000;
+    }*/
+    //float readingADC = total / 10.000;
+    float readingADC = analogRead(ADC_PIN);
     Serial.println("Stop collect adc");
     Serial.printf("Current battery adc : %f\n", readingADC);
     float readingVoltage = -0.000000000000016 * pow(readingADC, 4) + 0.000000000118171 * pow(readingADC, 3) - 0.000000301211691 * pow(readingADC, 2) + 0.001109019271794 * readingADC + 0.034143524634089;
@@ -587,6 +590,7 @@ void ping()
             if (doc["Command"] != "")
             {
                 setCurrentState(4);
+                xTaskCreatePinnedToCore((TaskFunction_t)keyMonitor, "handleCommandWatchDog", 2048, (void *)NULL, (UBaseType_t)2, (TaskHandle_t *)NULL, (BaseType_t)tskNO_AFFINITY);
                 handleCommand(doc["Command"].as<String>());
                 setCurrentState(3);
                 delay(500);
@@ -632,25 +636,35 @@ void deviceSleep()
             }
         }
 
-        Serial.printf("light sleep start :%ld ms\n", sleepTimeSec * 1000);
-
         if (WiFi.status() == WL_CONNECTED)
         {
             WiFi.disconnect();
         }
         WiFi.mode(WIFI_OFF);
 
+        bool deepSleep = false;
         if (wifiErrReason == WIFI_REASON_NO_AP_FOUND)
         {
-            sleepTimeSec = 30;
+            //deepSleep = true;
+            sleepTimeSec = 50;
         }
 
         LastSleepTime = millis();
+        Serial.printf("light sleep start :%ld ms\n", sleepTimeSec * 1000);
         esp_sleep_enable_timer_wakeup(sleepTimeSec * 1000000);
         gpio_wakeup_enable((gpio_num_t)RESETKEY_PIN, GPIO_INTR_LOW_LEVEL);
         esp_sleep_enable_gpio_wakeup();
         delay(100);
-        esp_light_sleep_start();
+
+        if (deepSleep)
+        {
+            esp_deep_sleep_start();
+        }
+        else
+        {
+            esp_light_sleep_start();
+        }
+
         esp_sleep_wakeup_cause_t wakeup_cause = esp_sleep_get_wakeup_cause();
         if (wakeup_cause == ESP_SLEEP_WAKEUP_GPIO)
         {
@@ -806,5 +820,20 @@ void httpOTA(Stream &stream, int contentLength)
         // space availability
         Serial.println("Not enough space to begin OTA");
         stream.flush();
+    }
+}
+
+void handleCommandWatchDog()
+{
+    long start = millis();
+    while (currentState == 4)
+    {
+        /* code */
+        delay(100);
+        if (millis() - start > 90 * 1000)
+        {
+            Serial.println("handleCommand timeout");
+            ESP.restart();
+        }
     }
 }
