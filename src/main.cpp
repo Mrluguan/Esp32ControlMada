@@ -30,6 +30,7 @@
 char *CurrentBindingID = new char[32 + 1];
 char *CurrentListenBindingIDPath = new char[10 + 8 + 1 + 1];
 char *CurrentDeviceID = new char[10 + 8 + 1];
+char *CurrentDeviceIDWithoutCompany = new char[8 + 8 + 1];
 
 AsyncWebServer httpserver(8080);
 WebAPI *webApi;
@@ -45,6 +46,8 @@ wifi_err_reason_t wifiErrReason = WIFI_REASON_UNSPECIFIED;
 bool hasDeviceBinded = false;
 long LastHttpPingTime = 0;
 long setupStartTime = 0;
+
+int notAPFoundTimes = 0;
 
 int pingErrorCount = 0;
 
@@ -100,12 +103,17 @@ void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info)
     {
     case SYSTEM_EVENT_STA_DISCONNECTED:
         wifiErrReason = (wifi_err_reason_t)info.disconnected.reason;
+        if (wifiErrReason == WIFI_REASON_NO_AP_FOUND)
+        {
+            notAPFoundTimes++;
+        }
         WiFi.disconnect();
         wifiConnecting = false;
         break;
     case SYSTEM_EVENT_STA_GOT_IP:
         wifiErrReason = WIFI_REASON_UNSPECIFIED;
         wifiConnecting = false;
+        notAPFoundTimes = 0;
         break;
     default:
         break;
@@ -196,11 +204,22 @@ void initParameters()
     uint64_t chipid = ESP.getEfuseMac(); //The chip ID is essentially its MAC address(length: 6 bytes).
     unsigned char value[sizeof(chipid)];
     memcpy(value, &chipid, sizeof(chipid));
+    Serial.print("MAC = ");
+    for (int i = 0; i < 6; i++)
+    {
+        Serial.printf("%x", value[i]);
+    }
+    Serial.println();
+
     uint crcRes = CRC32(value, sizeof(chipid));
+    strcpy(CurrentDeviceIDWithoutCompany, DeviceCategory);
+    strcat(CurrentDeviceIDWithoutCompany, DeviceModelNo);
+    sprintf(CurrentDeviceIDWithoutCompany + 8, "%-4X", crcRes);
+    Serial.printf("CurrentDeviceIDWithoutCompany = %s\n", CurrentDeviceIDWithoutCompany);
+
     strcpy(CurrentDeviceID, CompanyNo);
-    strcat(CurrentDeviceID, DeviceCategory);
-    strcat(CurrentDeviceID, DeviceModelNo);
-    sprintf(CurrentDeviceID + 10, "%-4X", crcRes);
+    strcat(CurrentDeviceID, CurrentDeviceIDWithoutCompany);
+
     Serial.printf("CurrentDeviceID = %s\n", CurrentDeviceID);
 
     strcpy(CurrentListenBindingIDPath, "/");
@@ -350,8 +369,33 @@ void connectWifi()
         return;
     Serial.println();
     Serial.print("Try to connection wifi...");
-
     long startConnectTime = millis();
+
+    if (notAPFoundTimes >= 3)
+    {
+        bool foundAP = false;
+        for (int channel = 1; channel <= 13; channel++)
+        {
+            int16_t count = WiFi.scanNetworks(false, false, false, 300U, 1U);
+            for (int index = 0; index < count; index++)
+            {
+                wifi_ap_record_t *info = (wifi_ap_record_t *)WiFi.getScanInfoByIndex(index);
+                char ssid[34];
+                sprintf(ssid, "%s", info->ssid);
+                if (strncmp(ssid, PrefSSID.c_str(), PrefSSID.length()) == 0)
+                {
+                    foundAP = true;
+                }
+            }
+        }
+        if (!foundAP)
+        {
+            Serial.println("AP Not Found");
+            Serial.printf("Connect wifi use %ld ms.\n", millis() - startConnectTime);
+            setCurrentState(1);
+            return;
+        }
+    }
 
     WiFi.mode(WIFI_STA);
     WiFi.onEvent(onWiFiEvent);
@@ -414,7 +458,7 @@ void deviceSetup()
     hasDeviceBinded = false;
 
     //Start Beacon
-    StartDeviceIDBeacon(CurrentDeviceID);
+    StartDeviceIDBeacon(CurrentDeviceIDWithoutCompany);
 
     WiFi.mode(WIFI_AP_STA);
     WiFi.beginSmartConfig();
