@@ -40,29 +40,29 @@ int LED_FLASH_FLAG = 0;
 
 int currentState = 0; //0=刚开机，1=无法连接，2=正在配网，3=正常工作，4=繁忙
 
-bool wifiConnecting = false;
-wifi_err_reason_t wifiErrReason = WIFI_REASON_UNSPECIFIED;
+bool wifiConnecting = false;                               //是否正在尝试连接wifi
+wifi_err_reason_t wifiErrReason = WIFI_REASON_UNSPECIFIED; //上一次连接wifi错误的原因
 
-bool hasDeviceBinded = false;
-long LastHttpPingTime = 0;
-long setupStartTime = 0;
+bool hasDeviceBinded = false; //设备是否已经绑定
 
-int notAPFoundTimes = 0;
+int notAPFoundTimes = 0; //尝试连接，找不到ap的次数
 
-int pingErrorCount = 0;
+int pingErrorCount = 0; //ping失败次数
 
-long sleepTimeSec = 5;
-long LastSleepTime = 0;
+long sleepTimeSec = 5;  //睡眠时长
+long LastSleepTime = 0; //上一次睡眠时间
 
-long LastSntpSync = 0;
+String PrefSSID = "";     //SSID
+String PrefPassword = ""; //Password
+String BindingID = "";    //绑定ID
 
-String PrefSSID = "";
-String PrefPassword = "";
-String BindingID = "";
+float LatestVoltage = 3; //上一次测得的电压
+int LatestWifiRSSI = 3;  //上一次测得的信号强度
 
-float LatestVoltage = 3;
-int LatestWifiRSSI = 3;
+long LatestPingReturnTimeInfo = 0; //上一次Ping响应返回的时间戳
+long LatestPingReturnTime = 0;     //上一次Ping的响应时间
 
+//重置设备
 void resetDevice();
 //初始化全局参数
 void initParameters();
@@ -78,8 +78,6 @@ void keyMonitor(void *Parameter);
 void keyUp();
 //初始化wifi
 void connectWifi();
-//时间同步
-void sntpAysnc();
 //ping
 void ping();
 //获取当前设备状态字符串
@@ -96,6 +94,8 @@ void handleCommand(String command);
 void httpOTA(Stream &stream, int contentLength);
 //命令处理超时看门狗
 void handleCommandWatchDog();
+//获得当前时间
+bool getCurrentDateTime(tm *ltm);
 
 void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info)
 {
@@ -103,10 +103,6 @@ void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info)
     {
     case SYSTEM_EVENT_STA_DISCONNECTED:
         wifiErrReason = (wifi_err_reason_t)info.disconnected.reason;
-        if (wifiErrReason == WIFI_REASON_NO_AP_FOUND)
-        {
-            notAPFoundTimes++;
-        }
         WiFi.disconnect();
         wifiConnecting = false;
         break;
@@ -176,11 +172,6 @@ void loop()
         connectWifi();
         if (WiFi.isConnected())
         {
-            if (LastSntpSync == 0 || millis() - LastSntpSync > 6 * 60 * 60 * 1000)
-            {
-                sntpAysnc();
-                LastSntpSync = millis();
-            }
             long startPingTime = millis();
             ping();
             Serial.printf("ping use %ld ms.\n", millis() - startPingTime);
@@ -371,32 +362,6 @@ void connectWifi()
     Serial.print("Try to connection wifi...");
     long startConnectTime = millis();
 
-    if (notAPFoundTimes >= 3)
-    {
-        bool foundAP = false;
-        for (int channel = 1; channel <= 13; channel++)
-        {
-            int16_t count = WiFi.scanNetworks(false, false, false, 300U, 1U);
-            for (int index = 0; index < count; index++)
-            {
-                wifi_ap_record_t *info = (wifi_ap_record_t *)WiFi.getScanInfoByIndex(index);
-                char ssid[34];
-                sprintf(ssid, "%s", info->ssid);
-                if (strncmp(ssid, PrefSSID.c_str(), PrefSSID.length()) == 0)
-                {
-                    foundAP = true;
-                }
-            }
-        }
-        if (!foundAP)
-        {
-            Serial.println("AP Not Found");
-            Serial.printf("Connect wifi use %ld ms.\n", millis() - startConnectTime);
-            setCurrentState(1);
-            return;
-        }
-    }
-
     WiFi.mode(WIFI_STA);
     WiFi.onEvent(onWiFiEvent);
     wifiConnecting = true;
@@ -417,19 +382,6 @@ void connectWifi()
     {
         setCurrentState(1);
     }
-}
-
-void sntpAysnc()
-{
-    configTime(TimeZone * 3600, 0, "ntp.aliyun.com");
-    Serial.print("SntpAysnc Finish.Current datetime:");
-    struct tm timeinfo;
-    if (!getLocalTime(&timeinfo))
-    {
-        Serial.println("Failed to obtain time");
-        return;
-    }
-    Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
 }
 
 void resetDevice()
@@ -631,6 +583,8 @@ void ping()
         if (doc["Code"] == 0)
         {
             pingErrorCount = 0;
+            LatestPingReturnTimeInfo = doc["Time"].as<long>();
+            LatestPingReturnTime = millis();
             if (doc["Command"] != "")
             {
                 setCurrentState(4);
@@ -658,14 +612,15 @@ void deviceSleep()
     {
         Serial.printf("this time wakeup length :%ld ms\n", millis() - LastSleepTime - sleepTimeSec * 1000);
 
-        struct tm timeinfo;
-        if (!getLocalTime(&timeinfo))
+        tm timeinfo;
+        if (!getCurrentDateTime(&timeinfo))
         {
             Serial.println("Failed to obtain time");
             sleepTimeSec = 15;
         }
         else
         {
+            Serial.printf("hour = %d\n",timeinfo.tm_hour);
             if (timeinfo.tm_hour >= 23 || timeinfo.tm_hour < 7)
             {
                 sleepTimeSec = 30;
@@ -689,8 +644,16 @@ void deviceSleep()
         bool deepSleep = false;
         if (wifiErrReason == WIFI_REASON_NO_AP_FOUND)
         {
-            //deepSleep = true;
-            sleepTimeSec = 50;
+            if (notAPFoundTimes > 3)
+            {
+                //deepSleep = true;
+                sleepTimeSec = 50;
+            }
+            else
+            {
+                Serial.println("AP not found ++");
+                notAPFoundTimes++;
+            }
         }
 
         LastSleepTime = millis();
@@ -880,4 +843,24 @@ void handleCommandWatchDog()
             ESP.restart();
         }
     }
+}
+
+bool getCurrentDateTime(tm *ltm)
+{
+    if (LatestPingReturnTimeInfo == 0)
+        return false;
+    long now = LatestPingReturnTimeInfo + (long)((millis() - LatestPingReturnTime) / 1000);
+    if (TimeZone != 0)
+    {
+        now += TimeZone * 60 * 60;
+    }
+    tm *temp = localtime(&now);
+    ltm->tm_year = temp->tm_year,
+    ltm->tm_mon = temp->tm_mon;
+    ltm->tm_mday = temp->tm_mday;
+    ltm->tm_hour = temp->tm_hour;
+    ltm->tm_min = temp->tm_min;
+    ltm->tm_sec = temp->tm_sec;
+    Serial.printf("Current time = %d-%d-%d,%d:%d:%d\n", 1900 + ltm->tm_year, 1 + ltm->tm_mon, ltm->tm_mday, ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
+    return true;
 }
