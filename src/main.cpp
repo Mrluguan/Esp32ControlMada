@@ -836,8 +836,8 @@ void handleCommandWatchDog()
     while (currentState == 4)
     {
         /* code */
-        delay(100);
-        if (millis() - start > 90 * 1000)
+        delay(1000);
+        if ((millis() - start) > 90 * 1000)
         {
             Serial.println("handleCommand timeout");
             ESP.restart();
