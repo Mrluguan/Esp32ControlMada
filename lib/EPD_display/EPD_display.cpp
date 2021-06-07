@@ -187,11 +187,17 @@ void PIC_display_Clean(void)
 void lcd_chkstatus(void)
 {
   unsigned char busy;
+  int count = 0;
   do
   {
     EPD_W21_WriteCMD(0x71);
     busy = isEPD_W21_BUSY;
     busy = !(busy & 0x01);
+    count++;
+    if (count > 10000)
+    {
+      return;
+    }
   } while (busy);
   driver_delay_xms(200);
 }
