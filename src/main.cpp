@@ -588,7 +588,7 @@ void ping()
             if (doc["Command"] != "")
             {
                 setCurrentState(4);
-                xTaskCreatePinnedToCore((TaskFunction_t)keyMonitor, "handleCommandWatchDog", 2048, (void *)NULL, (UBaseType_t)2, (TaskHandle_t *)NULL, (BaseType_t)tskNO_AFFINITY);
+                //xTaskCreatePinnedToCore((TaskFunction_t)keyMonitor, "handleCommandWatchDog", 2048, (void *)NULL, (UBaseType_t)2, (TaskHandle_t *)NULL, (BaseType_t)tskNO_AFFINITY);
                 handleCommand(doc["Command"].as<String>());
                 setCurrentState(3);
                 delay(500);
@@ -840,8 +840,8 @@ void handleCommandWatchDog()
     while (currentState == 4)
     {
         /* code */
-        delay(100);
-        if (millis() - start > 90 * 1000)
+        delay(1000);
+        if ((millis() - start) > 90 * 1000)
         {
             Serial.println("handleCommand timeout");
             ESP.restart();
