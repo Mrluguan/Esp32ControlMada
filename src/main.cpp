@@ -233,8 +233,8 @@ void initGPIO()
     pinMode(LED_GREEN_PIN, OUTPUT);
 
     //切断墨水屏驱动供电
-    //pinMode(EPD_POWER, OUTPUT);
-    //digitalWrite(EPD_POWER, HIGH);
+    pinMode(EPD_POWER, OUTPUT);
+    digitalWrite(EPD_POWER, HIGH);
 
     //初始化墨水屏驱动SPI
     pinMode(BUSY_Pin, INPUT);
@@ -751,6 +751,8 @@ void handleCommand(String command)
     }
     else if (type == "setDisplay")
     {
+        digitalWrite(EPD_POWER, LOW);
+        delay(100);
         webApi->SetBusyStatus(true);
         String url = doc["Command"].as<String>();
         HTTPClient http;
@@ -761,6 +763,8 @@ void handleCommand(String command)
     }
     else if (type == "cleanDisplay")
     {
+        digitalWrite(EPD_POWER, LOW);
+        delay(100);
         webApi->SetBusyStatus(true);
         EPD_init(); //EPD init
         PIC_display_Clean();
