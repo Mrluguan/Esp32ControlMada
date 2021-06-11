@@ -30,12 +30,12 @@ void EPD_W21_WriteDATA(unsigned char command);
 void EPD_W21_WriteCMD(unsigned char command);
 //EPD
 void EPD_W21_Init(void);
-void EPD_init(void);
+bool EPD_init(void);
 void PIC_display (const unsigned char* picData_BW,const unsigned char* picData_R);
 void PIC_display_part(unsigned char *picData,int pos,int length);
 void EPD_sleep(void);
 void EPD_refresh(void);
-void lcd_chkstatus(void);
+void lcd_chkstatus(bool checktimeout = false);
 void PIC_display_Clean(void);
 
 

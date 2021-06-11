@@ -159,7 +159,6 @@ void setup()
 
 void loop()
 {
-    //return;
     if (millis() > 40ul * 24ul * 60ul * 60ul * 1000ul)
     {
         ESP.restart();
@@ -234,7 +233,7 @@ void initGPIO()
 
     //切断墨水屏驱动供电
     pinMode(EPD_POWER, OUTPUT);
-    digitalWrite(EPD_POWER, HIGH);
+    //digitalWrite(EPD_POWER, HIGH);
 
     //初始化墨水屏驱动SPI
     pinMode(BUSY_Pin, INPUT);
@@ -455,27 +454,29 @@ void deviceSetup()
     smartConfigStartTime = millis();
     BindingID = "";
     Serial.println("wait bindingID");
-    httpserver.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-        Serial.println("http req");
-        request->send(200, "application/json", "{\"code\":0}");
-    });
-    httpserver.on(CurrentListenBindingIDPath, HTTP_GET, [](AsyncWebServerRequest *request) {
-        Serial.println("http req bind");
-        if (request->hasParam("msg"))
-        {
-            String msg;
-            msg = request->getParam("msg")->value();
-            Serial.printf("Received BindID=%s\n", BindingID.c_str());
-            request->send(200, "application/json", "{\"code\":0}");
-            delay(1000);
-            BindingID = msg;
-        }
-        else
-        {
-            request->send(200, "application/json", "{\"code\":25,\"error\":\"提交绑定参数错误\"}");
-        }
-        delay(10);
-    });
+    httpserver.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
+                  {
+                      Serial.println("http req");
+                      request->send(200, "application/json", "{\"code\":0}");
+                  });
+    httpserver.on(CurrentListenBindingIDPath, HTTP_GET, [](AsyncWebServerRequest *request)
+                  {
+                      Serial.println("http req bind");
+                      if (request->hasParam("msg"))
+                      {
+                          String msg;
+                          msg = request->getParam("msg")->value();
+                          Serial.printf("Received BindID=%s\n", BindingID.c_str());
+                          request->send(200, "application/json", "{\"code\":0}");
+                          delay(1000);
+                          BindingID = msg;
+                      }
+                      else
+                      {
+                          request->send(200, "application/json", "{\"code\":25,\"error\":\"提交绑定参数错误\"}");
+                      }
+                      delay(10);
+                  });
     httpserver.begin();
     while (BindingID == "")
     {
@@ -588,7 +589,7 @@ void ping()
             if (doc["Command"] != "")
             {
                 setCurrentState(4);
-                //xTaskCreatePinnedToCore((TaskFunction_t)keyMonitor, "handleCommandWatchDog", 2048, (void *)NULL, (UBaseType_t)2, (TaskHandle_t *)NULL, (BaseType_t)tskNO_AFFINITY);
+                xTaskCreatePinnedToCore((TaskFunction_t)keyMonitor, "handleCommandWatchDog", 2048, (void *)NULL, (UBaseType_t)2, (TaskHandle_t *)NULL, (BaseType_t)tskNO_AFFINITY);
                 handleCommand(doc["Command"].as<String>());
                 setCurrentState(3);
                 delay(500);
@@ -620,7 +621,7 @@ void deviceSleep()
         }
         else
         {
-            Serial.printf("hour = %d\n",timeinfo.tm_hour);
+            Serial.printf("hour = %d\n", timeinfo.tm_hour);
             if (timeinfo.tm_hour >= 23 || timeinfo.tm_hour < 7)
             {
                 sleepTimeSec = 30;
@@ -714,7 +715,12 @@ void writeStreamToDisplay(Stream &stream)
         Serial.println("stream isn't available");
         return;
     }
-    EPD_init(); //EPD init
+    bool success = EPD_init(); //EPD init
+    if(!success)
+    {
+        return;
+    }
+    Serial.println("EDP init Finish");
     int pos = 0;
     int length = 0;
     uint8_t *buf = new uint8_t[4096];
@@ -760,17 +766,29 @@ void handleCommand(String command)
         writeStreamToDisplay(*streamptr);
         http.end();
         webApi->CommandHandleResultCallback(doc["CommandID"], "success", true);
+        //digitalWrite(EPD_POWER, HIGH);
     }
     else if (type == "cleanDisplay")
     {
         digitalWrite(EPD_POWER, LOW);
         delay(100);
         webApi->SetBusyStatus(true);
-        EPD_init(); //EPD init
-        PIC_display_Clean();
-        EPD_refresh(); //EPD_refresh
-        EPD_sleep();   //EPD_sleep,Sleep instruction is necessary, please do not delete!!!
-        webApi->CommandHandleResultCallback(doc["CommandID"], "success", true);
+        Serial.println("EDP init Start");
+        bool success = EPD_init(); //EPD init
+        if (success)
+        {
+            Serial.println("EDP init Finish");
+            PIC_display_Clean();
+            EPD_refresh(); //EPD_refresh
+            EPD_sleep();   //EPD_sleep,Sleep instruction is necessary, please do not delete!!!
+            webApi->CommandHandleResultCallback(doc["CommandID"], "success", true);
+        }
+        else
+        {
+            webApi->CommandHandleResultCallback(doc["CommandID"], "faild", true);
+        }
+        delay(100);
+        //digitalWrite(EPD_POWER, HIGH);
     }
     else
     {
@@ -841,11 +859,12 @@ void handleCommandWatchDog()
     {
         /* code */
         delay(1000);
-        if ((millis() - start) > 90 * 1000)
+        if ((millis() - start) > 30 * 1000)
         {
             Serial.println("handleCommand timeout");
             ESP.restart();
         }
+        Serial.println("a");
     }
 }
 
