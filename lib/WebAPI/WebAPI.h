@@ -5,7 +5,7 @@
 #define _WEBAPI_H_
 
 //当前内部固件程序版本号
-#define FIREWARE_VERSION 202105170
+#define FIREWARE_VERSION 202108260
 //HttpPing地址
 #define http_ping_url "https://iot.dotsourceit.com/HTTPGateway/Ping"
 //SetBusyStatus地址

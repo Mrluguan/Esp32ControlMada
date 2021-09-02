@@ -128,7 +128,6 @@ void setup()
     Serial.begin(115200);
     setCpuFrequencyMhz(80);
     setCurrentState(0);
-
     Serial.printf("current firmware version : %d\n", FIREWARE_VERSION);
     uint32_t flash_size = ESP.getFlashChipSize();
     Serial.printf("flash size = %dMB\n", flash_size / 1024 / 1024);
@@ -636,6 +635,12 @@ void deviceSleep()
             }
         }
 
+        if (strcmp(CurrentDeviceIDWithoutCompany, "EIDMP0724A6FD382") == 0 || strcmp(CurrentDeviceIDWithoutCompany, "EIDMP0727C31C4DA") == 0 || strcmp(CurrentDeviceIDWithoutCompany, "EIDMP072764078B3") == 0)
+        {
+            Serial.println("short sleep");
+            sleepTimeSec = 5;
+        }
+
         if (WiFi.status() == WL_CONNECTED)
         {
             WiFi.disconnect();
@@ -716,7 +721,7 @@ void writeStreamToDisplay(Stream &stream)
         return;
     }
     bool success = EPD_init(); //EPD init
-    if(!success)
+    if (!success)
     {
         return;
     }
